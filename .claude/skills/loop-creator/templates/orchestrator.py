@@ -652,6 +652,60 @@ def _announce_rate_limit_pause(resets_at, wait, state, tasks):
     write_report(state, tasks, note=msg)
 
 
+# ---------------------------------------------------------------- learned conventions
+# Spec §16: a rolling, bounded, deduped `.loop/learned.md` of repo-specific
+# conventions the loop discovers (e.g. "use pnpm"), injected into later iterations.
+# Bounded + additive-only so it never bloats or rewrites the core prompt. The two
+# transforms are pure so the dedup/bound logic is unit-testable without touching
+# disk; append_learned is the thin IO wrapper (read -> append -> normalize -> write).
+DEFAULT_LEARNED_LIMIT = 15
+
+
+def format_learned_bullet(text):
+    """Normalize a learned convention into ONE `- `-prefixed markdown bullet with
+    all interior whitespace (spaces, tabs, newlines) collapsed to single spaces
+    (spec §16). Any existing leading `-`/`*` list marker is stripped first, so the
+    function is idempotent -- re-formatting an already-formatted bullet is a no-op."""
+    collapsed = " ".join((text or "").split())
+    collapsed = re.sub(r"^[-*]\s+", "", collapsed)
+    return f"- {collapsed}"
+
+
+def dedupe_bounded(bullets, limit=DEFAULT_LEARNED_LIMIT):
+    """Dedupe a bullet list keeping the MOST-RECENT occurrence of each duplicate,
+    then cap to the last `limit` bullets (spec §16 anti-degradation). Pure. A repeat
+    bullet is re-surfaced at its latest position (so a re-learned convention stays
+    fresh), and only the newest `limit` survive so the layer never bloats."""
+    seen = set()
+    kept = []
+    for b in reversed(bullets):            # walk newest-first: first sight wins
+        if b not in seen:
+            seen.add(b)
+            kept.append(b)
+    kept.reverse()                         # restore original (latest-occurrence) order
+    return kept[-limit:]
+
+
+def _read_learned_bullets(path):
+    """Existing non-blank bullet lines from a learned.md, or [] when absent."""
+    p = Path(path)
+    if not p.exists():
+        return []
+    return [ln.strip() for ln in p.read_text(encoding="utf-8").splitlines() if ln.strip()]
+
+
+def append_learned(path, bullet):
+    """Append one learned convention to the rolling `.loop/learned.md` (spec §16),
+    then rewrite it deduped + bounded. Reads any existing bullets, adds the
+    normalized new one, keeps the most-recent of duplicates, and caps the file to
+    DEFAULT_LEARNED_LIMIT. Returns the bullets written."""
+    bullets = _read_learned_bullets(path)
+    bullets.append(format_learned_bullet(bullet))
+    bullets = dedupe_bounded(bullets)
+    Path(path).write_text("\n".join(bullets) + "\n", encoding="utf-8")
+    return bullets
+
+
 # ---------------------------------------------------------------- main loop
 def process_task(task, cfg, adapter, state, backlog_rel):
     """Run one task through up to max_retries attempts. Returns (done, sha, reason)."""
