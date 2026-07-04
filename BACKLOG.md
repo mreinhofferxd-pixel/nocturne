@@ -42,7 +42,28 @@ in `pick_model` and overrides `config.model`.
 
 ### design-layer findings (by hand — weak/no pytest teeth; do NOT feed to the autonomous loop)
 
-- Gate derivation must weight an explicit "Done = <cmd>" statement in `CLAUDE.md`/`AGENTS.md` ABOVE language-default guessing. Symphony's real bar was `python -m pytest tests/unit/`; a naive `ruff && pytest` would false-block every task (ruff was pre-existing-red and not their gate). Update `reference/gate-derivation.md` precedence + the SKILL recon step.
-- Auto-detect a non-checkbox / prose `BACKLOG.md` and route it to the SPEC-groom path; also write the groomed checkbox backlog to a SEPARATE file when the repo's own backlog uses a different convention (symphony: prose + remove-when-done). Strengthen SKILL.md step 2 + `reference/spec-to-backlog.md`.
-- Add a design-layer ticket-sanity pass before launch: verify each groomed task is a REAL, non-redundant change. Symphony: two agent-proposed "bugs" were intended behavior / already handled at another layer. Trust-but-verify the BACKLOG, not just task output.
+- SHIPPED `644cd04` — Gate derivation must weight an explicit "Done = <cmd>" statement in `CLAUDE.md`/`AGENTS.md` ABOVE language-default guessing. Symphony's real bar was `python -m pytest tests/unit/`; a naive `ruff && pytest` would false-block every task (ruff was pre-existing-red and not their gate). Update `reference/gate-derivation.md` precedence + the SKILL recon step.
+- SHIPPED `0741493` — Auto-detect a non-checkbox / prose `BACKLOG.md` and route it to the SPEC-groom path; also write the groomed checkbox backlog to a SEPARATE file when the repo's own backlog uses a different convention (symphony: prose + remove-when-done). Strengthen SKILL.md step 2 + `reference/spec-to-backlog.md`.
+- SHIPPED `dc8181a` — Add a design-layer ticket-sanity pass before launch: verify each groomed task is a REAL, non-redundant change. Symphony: two agent-proposed "bugs" were intended behavior / already handled at another layer. Trust-but-verify the BACKLOG, not just task output.
 - Cosmetic: loop commits self-attribute `Co-Authored-By: Opus 4.7` even on a fable run (the headless model's own commit text); not nocturne-controllable.
+
+### analysis session 2026-07-05 — by-hand improvement pass (audit trail)
+
+Four read-only lenses (usability / optimization / bugs / docs) fanned out over the
+skill; every finding re-verified against the code before acting. Shipped beyond the
+two checkboxes above: atomic `state.json` writes (`4a97b75` — torn state lost the
+branch pin on resume), null/garbage stream-json value hardening (`c47564c`), config
+schema completeness in SKILL.md + SPEC §13 v1-naming note (`b2a5c6d`), stale
+"out of v1" scope list (`6addcac`).
+
+Rejected findings (one line each — the kill record):
+
+- All 12 optimization findings: micro-CPU (event-list rewalks, backlog re-parse, gate-string rebuild, done_count recount) — run cost is model tokens + gate runtime, not python loops; caching adds staleness risk for zero felt latency.
+- "Trim acceptance/prior from retry prompts": wrong — every attempt is a fresh `claude -p` process; dropping them would starve the retry of its failure context.
+- "Gate feed decode when live_feed off": decode feeds `activity.log` regardless; only the print is gated.
+- Lock-file encoding gap: PID is ASCII digits — byte-identical under any Windows codepage.
+- `parse_events` silently drops malformed lines: tolerable by design; worst case under-counts pennies of cost on a killed stream.
+- Amend-failure handling: hooks already passed on the model's original commit, so an amend re-run failing is rare; the crash path recovers on resume, and a "fix" risks discarding a good commit.
+- Backslash paths in `touches_protected`: git diff always emits forward slashes.
+- SKILL step-1/2 reordering, spec-sync "offer" ambiguity, missing gate/checkpoint/resume examples: already present or already addressed to the right audience (SKILL.md speaks to the design-layer Claude).
+- SPEC §8.3 "documents unbuilt PRs": SPEC is the design target; built-vs-not is tracked here and in memory.
