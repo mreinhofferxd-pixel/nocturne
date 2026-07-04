@@ -19,6 +19,7 @@ Status: python .loop/orchestrator.py status  (prints .loop/report.md)
 """
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -47,6 +48,50 @@ for _stream in (sys.stdout, sys.stderr):
         _stream.reconfigure(encoding="utf-8", errors="replace")
     except (AttributeError, ValueError):
         pass
+
+
+# ---------------------------------------------------------------- model tiering
+# Per-task model selection by complexity (spec §8.4). Cheap-first: pick the
+# cheapest tier a task's tag allows, then climb one tier per gate-failure retry
+# (sonnet-5 -> opus-4-8 -> fable-5). Only an explicit very-complex tag reaches
+# the priciest tier.
+DEFAULT_MODEL = "claude-opus-4-8"
+TIER_MODELS = {
+    "simple": "claude-sonnet-5",
+    "complex": DEFAULT_MODEL,
+    "very-complex": "claude-fable-5",
+}
+ESCALATION_LADDER = ["claude-sonnet-5", "claude-opus-4-8", "claude-fable-5"]
+_TIER_TAG = re.compile(r"\s*\[(very-complex|complex|simple)\]\s*$", re.IGNORECASE)
+
+
+def parse_tier(title):
+    """Extract an optional trailing [simple|complex|very-complex] complexity tag
+    from a task title. Returns the lowercased tier, or None when untagged."""
+    m = _TIER_TAG.search(title or "")
+    return m.group(1).lower() if m else None
+
+
+def pick_model(task, config):
+    """Choose a task's model by complexity tier (spec §8.4). A tier tag on the
+    title maps to its tier model; an untagged task falls to the config default.
+    Config's `tier_models` overrides individual tiers."""
+    tier_models = {**TIER_MODELS, **config.get("tier_models", {})}
+    default = config.get("model", DEFAULT_MODEL)
+    tier = parse_tier(task.title)
+    if tier and tier in tier_models:
+        return tier_models[tier]
+    return default
+
+
+def escalate(model, config):
+    """Bump one tier up the escalation ladder on a gate-failure retry (spec §8.4:
+    sonnet-5 -> opus-4-8 -> fable-5). Returns the model unchanged when already at
+    the top tier or not on the ladder."""
+    ladder = config.get("escalation_ladder", ESCALATION_LADDER)
+    if model not in ladder:
+        return model
+    return ladder[min(ladder.index(model) + 1, len(ladder) - 1)]
 
 
 # ---------------------------------------------------------------- shell / git
@@ -189,15 +234,16 @@ def build_prompt(task, gate, prior):
     return p
 
 
-def run_claude(prompt, cfg, logfile):
+def run_claude(prompt, cfg, logfile, model=None):
     tools = ",".join(cfg["guardrails"]["allowed_tools"])
     budget = cfg.get("budget", {})
+    model = model or cfg["model"]
     cmd = (
         f'claude -p --output-format stream-json --verbose '
         f'--permission-mode acceptEdits '
         f'--allowedTools "{tools}" '
         f'--max-turns {budget.get("max_turns", 30)} '
-        f'--model {cfg["model"]}'
+        f'--model {model}'
     )
     if cfg.get("effort"):
         cmd += f' --effort {cfg["effort"]}'
@@ -284,14 +330,15 @@ def process_task(task, cfg, adapter, state, backlog_rel):
     before = head_sha()
     prior = None
     prev_diff = None
+    model = pick_model(task, cfg)
 
     for attempt in range(1, max_retries + 1):
         n = state["iterations"] + 1
         logfile = LOGDIR / f"iteration-{n:03d}-a{attempt}.md"
-        print(f"[loop] task {task.id} '{task.title}' attempt {attempt}/{max_retries}")
+        print(f"[loop] task {task.id} '{task.title}' attempt {attempt}/{max_retries} [{model}]")
 
         prompt = build_prompt(task, gate, prior)
-        cost = run_claude(prompt, cfg, logfile)
+        cost = run_claude(prompt, cfg, logfile, model=model)
         state["cost_usd"] = state.get("cost_usd", 0.0) + cost
 
         cur_diff = git("diff", before)          # what the model changed this attempt
@@ -316,6 +363,7 @@ def process_task(task, cfg, adapter, state, backlog_rel):
         discard_inflight(before, backlog_rel)
         if stuck:
             return False, None, "no progress across retries (identical diff) — likely stuck"
+        model = escalate(model, cfg)   # next retry climbs one tier (spec §8.4)
 
     return False, None, (prior or "gate never passed")[:500]
 
