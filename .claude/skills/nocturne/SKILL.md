@@ -1,5 +1,5 @@
 ---
-name: loop-creator
+name: nocturne
 description: Read a repo and its BACKLOG.md (or groom a SPEC/design doc into one),
   then generate and launch a headless claude -p while-loop that autonomously works
   the backlog (implement -> verify -> commit) on a dedicated branch. v1 walking
@@ -8,7 +8,7 @@ description: Read a repo and its BACKLOG.md (or groom a SPEC/design doc into one
   user wants to set up or start an autonomous dev loop over a backlog or a spec.
 ---
 
-# loop-creator (v1)
+# nocturne (v1)
 
 You (the design-layer Claude) inspect the target repo, author a tailored headless
 loop, and launch it. A python harness (`orchestrator.py`) then drives a headless

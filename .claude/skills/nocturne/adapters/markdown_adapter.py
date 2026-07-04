@@ -1,4 +1,4 @@
-"""Markdown backlog adapter (loop-creator v1).
+"""Markdown backlog adapter (nocturne v1).
 
 Parses a checkbox list in BACKLOG.md / TODO.md / PLAN.md.
   - [ ] task   -> todo

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""loop-creator v1 orchestrator (walking skeleton).
+"""nocturne v1 orchestrator (walking skeleton).
 
 The harness owns control flow. TRUST-BUT-VERIFY: after each attempt the harness
 independently re-runs the gate AND checks git for a new commit. The model's
@@ -409,7 +409,7 @@ def write_report(state, tasks, halt=None, note=None):
     blocked = [tid for tid, r in state["results"].items() if r.get("status") == "blocked"]
     todo = sum(1 for t in tasks if not t.done and t.id not in blocked)
     lines = [
-        "# loop-creator report",
+        "# nocturne report",
         "",
         f"- branch: `{state['branch']}`",
         f"- iterations: {state['iterations']}",
@@ -1127,7 +1127,7 @@ def cmd_status(report=REPORT):
 
 def main():
     if not LOOP.exists():
-        print(f"[loop] no .loop/ at {ROOT}. run the loop-creator skill first.")
+        print(f"[loop] no .loop/ at {ROOT}. run the nocturne skill first.")
         sys.exit(1)
     if not CONFIG.exists():
         print(f"[loop] missing {CONFIG}.")

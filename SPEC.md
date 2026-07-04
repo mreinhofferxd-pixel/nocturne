@@ -1,4 +1,4 @@
-# loop-creator — Spec
+# nocturne — Spec
 
 A Claude Code skill that reads a repository and its backlog, then **generates and launches an optimal headless agentic loop** tailored to that repo's architecture, test setup, and goals. The user fires one command; the skill designs the loop (backlog source, quality gate, git strategy, guardrails, budget), writes the harness, previews it, and starts it.
 
@@ -52,7 +52,7 @@ The skill itself can launch the harness in the background and hand back a monito
 ## 3. End-to-end flow
 
 ```
-/loop-creator [goal or flags]
+/nocturne [goal or flags]
         │
         ▼
 Phase 0  Preflight        clean worktree? git repo? claude CLI + auth? runtime (bash/node/py)?
@@ -72,7 +72,7 @@ Autonomy applies to Phase 6. Phase 5 is a one-time human gate (skippable with `-
 ## 4. Skill anatomy (files the skill ships)
 
 ```
-loop-creator/
+nocturne/
   SKILL.md                     # frontmatter + phase-by-phase instructions for the design-layer Claude
   reference/
     recon-checklist.md         # what to detect and how (per ecosystem)
@@ -347,7 +347,7 @@ All three implement the same control flow and read the same `loop.config.json`, 
 ## 14. Example run
 
 ```
-$ /loop-creator "add pagination to the users API and cover it with tests"
+$ /nocturne "add pagination to the users API and cover it with tests"
 
 Phase 1  Detected: TypeScript · pnpm · vitest · eslint · tsc · GitHub Actions
 Phase 2  Interactive decomposition → 6 tasks written to BACKLOG.md

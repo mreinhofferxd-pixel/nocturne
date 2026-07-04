@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SKILL = ROOT / ".claude" / "skills" / "loop-creator"
+SKILL = ROOT / ".claude" / "skills" / "nocturne"
 
 for sub in ("adapters", "templates"):
     p = SKILL / sub

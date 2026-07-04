@@ -21,11 +21,11 @@ def test_cmd_stop_notice_when_no_loop(tmp_path, capsys):
 
 def test_cmd_status_prints_report(tmp_path, capsys):
     report = tmp_path / "report.md"
-    report.write_text("# loop-creator report\n- done: 3\n", encoding="utf-8")
+    report.write_text("# nocturne report\n- done: 3\n", encoding="utf-8")
     rc = orchestrator.cmd_status(report=report)
     assert rc == 0
     out = capsys.readouterr().out
-    assert "loop-creator report" in out
+    assert "nocturne report" in out
     assert "done: 3" in out
 
 
