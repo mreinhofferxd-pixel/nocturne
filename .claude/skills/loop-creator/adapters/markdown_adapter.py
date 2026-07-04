@@ -14,6 +14,22 @@ from dataclasses import dataclass
 
 _CHECKBOX = re.compile(r'^(?P<indent>\s*)-\s+\[(?P<mark>[ xX])\]\s+(?P<body>.*)$')
 _COMMENT = re.compile(r'<!--.*?-->')
+_ACCEPTANCE = re.compile(r"@acceptance\(([^)]*)\)")
+
+
+def parse_acceptance(title):
+    """Extract an optional @acceptance(<criterion>) marker from a task title.
+
+    Returns (clean_title, criterion); criterion is None when no marker is
+    present. The marker may sit anywhere in the title; it is removed and the
+    remaining internal whitespace collapsed, so a trailing [tier] tag stays
+    trailing and parse_tier keeps matching."""
+    m = _ACCEPTANCE.search(title or "")
+    if not m:
+        return title, None
+    clean = _ACCEPTANCE.sub(" ", title, count=1)
+    clean = re.sub(r"\s+", " ", clean).strip()
+    return clean, m.group(1).strip()
 
 
 @dataclass
@@ -22,6 +38,7 @@ class Task:
     title: str
     done: bool
     raw: str
+    acceptance: str | None = None
 
     @property
     def id(self) -> str:
@@ -48,7 +65,9 @@ class MarkdownBacklog:
             body = m.group("body")
             done = m.group("mark").lower() == "x"
             title = _COMMENT.sub("", body).strip()
-            items.append((lineno, Task(idx, title, done, line.rstrip("\n"))))
+            title, acceptance = parse_acceptance(title)
+            task = Task(idx, title, done, line.rstrip("\n"), acceptance)
+            items.append((lineno, task))
             idx += 1
         return lines, items
 

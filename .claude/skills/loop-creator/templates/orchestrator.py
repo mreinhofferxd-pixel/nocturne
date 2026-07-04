@@ -244,6 +244,13 @@ def build_prompt(task, gate, prior, flags=None):
         f"model or API shape), add one line to your commit body: "
         f"'LOOP-FLAG: <what changed>'."
     )
+    acceptance = getattr(task, "acceptance", None)
+    if acceptance:
+        p += (
+            "\n- Hard rule: the finished work must satisfy this acceptance "
+            f"criterion: {acceptance}. A test pinning this criterion must be "
+            "present."
+        )
     p += format_flag_notice(flags)
     if prior:
         p += f"\n\nYour previous attempt failed the gate:\n{prior}\n\nDiagnose and fix."
