@@ -92,7 +92,14 @@ The orchestrator writes `.loop/.gitignore` (`*`) itself so `.loop/` stays out of
 git and out of `git clean`.
 
 ### 6. Preview & confirm (one-time human gate)
-Show: backlog task count, the exact gate, the loop branch, and the caps. If the
+**Ticket sanity first — trust-but-verify the backlog, not just task output.** Before
+previewing, read the code each task claims to change and confirm the task is a REAL,
+non-redundant fix: a claimed bug may be intended behavior pinned by existing tests, or
+already handled at another layer (symphony: two agent-proposed tickets were duds on
+inspection). Drop or flag anything that fails this pass — on a mature repo a bad
+ticket wastes a whole task budget.
+
+Then show: backlog task count, the exact gate, the loop branch, and the caps. If the
 backlog was groomed from a spec, also show the unit count and any **flagged/ambiguous**
 items for the user to resolve. Require an explicit GO before launching.
 
