@@ -91,10 +91,12 @@ python .loop/orchestrator.py
 Attached = tied to this session. The harness checks out `loop/<ts>`, works each
 task, commits on green, checkpoints state every iteration.
 
-- **Monitor:**
-  - `.loop/activity.log` — decoded **live feed** of the running session (tool calls,
-    assistant text, results), flushed line-by-line. Follow it:
-    `Get-Content .loop/activity.log -Wait` (PowerShell) / `tail -f .loop/activity.log`.
+- **Monitor (in-session):** the run is attached, so the harness **streams the decoded
+  feed straight to this terminal** — tool calls, assistant text, per-turn cost — and you
+  watch it live in-context. No separate viewer or manual tail needed. Toggle with
+  `observability.live_feed` (default true).
+  - `.loop/activity.log` — the same feed mirrored to a file (post-hoc review or a second
+    pane): `Get-Content .loop/activity.log -Wait` (PowerShell) / `tail -f .loop/activity.log`.
   - `.loop/report.md` — task-boundary dashboard (done/blocked/todo, cost).
   - `.loop/log/iteration-*.md` — raw stream-json per attempt, also written live.
 - **Stop:** create `.loop/STOP` (honored at the next task boundary — never
@@ -119,6 +121,7 @@ Blocked tasks carry a reason. No push/PR in v1 — the user reviews the branch.
   "on_rate_limit": "pause-resume",          // §9: pause-resume (sleep to reset, re-run same attempt) | halt (stop w/ resume msg)
   "max_rate_limit_wait_s": 21600,           // cap on a single pause (6h); a longer reset halts instead of sleeping
   "oversize_file_threshold": 25,            // §8.7: a blocked task whose last diff touches more files than this is flagged "too large — split needed"
+  "observability": { "live_feed": true },   // stream the decoded feed to this terminal (in-session live view); false = silent unattended
   "budget": {
     "max_iterations": 50,
     "max_consecutive_failures": 3,

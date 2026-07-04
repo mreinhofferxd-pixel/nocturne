@@ -37,6 +37,7 @@ STOP = LOOP / "STOP"
 LOGDIR = LOOP / "log"
 REPORT = LOOP / "report.md"
 ACTIVITY = LOOP / "activity.log"   # decoded, tail-able live feed of the running session
+LIVE_FEED = True   # also stream the decoded feed to stdout (in-session live view); set from config in main()
 LEARNED = LOOP / "learned.md"      # §16 rolling repo conventions, injected each iteration
 
 sys.path.insert(0, str(LOOP))  # markdown_adapter.py is copied alongside this file
@@ -350,8 +351,15 @@ def _append_activity(text):
         pass
 
 
+def feed_lines(ev, stamp):
+    """Pure: stamped, human-readable feed lines for one stream-json event.
+    Shared by the activity.log writer and the in-session live stdout feed."""
+    return [f"{stamp} {msg}" for msg in _activity_line(ev)]
+
+
 def emit_activity(line):
-    """Decode one stream-json line and append readable feed lines to activity.log."""
+    """Decode one stream-json line -> append to activity.log AND, when LIVE_FEED is
+    on, stream it to stdout so the attached session shows the run live in-context."""
     line = line.strip()
     if not line.startswith("{"):
         return
@@ -360,8 +368,16 @@ def emit_activity(line):
     except json.JSONDecodeError:
         return
     stamp = time.strftime("%H:%M:%S")
-    for msg in _activity_line(ev):
-        _append_activity(f"{stamp} {msg}")
+    for msg in feed_lines(ev, stamp):
+        _append_activity(msg)
+        if LIVE_FEED:
+            print("  " + msg, flush=True)
+
+
+def task_banner(task, attempt, max_retries, model, cost):
+    """Pure: one-line session header for a task attempt (model + running cost)."""
+    return (f"▶ {task.id} '{task.title}' · attempt {attempt}/{max_retries} · "
+            f"{model} · ${cost:.2f}")
 
 
 def _tool_summary(name, inp):
@@ -1015,7 +1031,8 @@ def process_task(task, cfg, adapter, state, backlog_rel):
     for attempt in range(1, max_retries + 1):
         n = state["iterations"] + 1
         logfile = LOGDIR / f"iteration-{n:03d}-a{attempt}.md"
-        print(f"[loop] task {task.id} '{task.title}' attempt {attempt}/{max_retries} [{model}]")
+        print("[loop] " + task_banner(task, attempt, max_retries, model,
+                                       state.get("cost_usd", 0.0)))
 
         prompt = build_prompt(task, gate, prior, flags=flags)
         label = f"{task.id} attempt {attempt}/{max_retries}: {task.title[:60]}"
@@ -1133,6 +1150,8 @@ def main():
         print(f"[loop] missing {CONFIG}.")
         sys.exit(1)
     cfg = json.loads(CONFIG.read_text(encoding="utf-8"))
+    global LIVE_FEED
+    LIVE_FEED = cfg.get("observability", {}).get("live_feed", True)
     LOGDIR.mkdir(parents=True, exist_ok=True)
 
     # --- preflight
