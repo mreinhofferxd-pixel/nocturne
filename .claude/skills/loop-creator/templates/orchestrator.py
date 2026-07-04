@@ -17,6 +17,7 @@ Run:    python .loop/orchestrator.py
 Stop:   python .loop/orchestrator.py stop    (drops .loop/STOP; halts at boundary)
 Status: python .loop/orchestrator.py status  (prints .loop/report.md)
 """
+import collections
 import json
 import os
 import re
@@ -285,20 +286,34 @@ def run_claude(prompt, cfg, logfile, model=None, label=""):
     if not stdout:
         stdout = "[loop] claude produced no output (killed or timed out)."
         logfile.write_text(stdout, encoding="utf-8")
-    return parse_cost(stdout)
+    events = parse_events(stdout)
+    return ClaudeResult(
+        cost=parse_cost(events),
+        rate_limited=is_rate_limited(events),
+        resets_at=rate_limit_reset(events),
+    )
 
 
-def parse_cost(stdout):
-    """Best-effort: pull total_cost_usd from the final stream-json result event."""
-    cost = 0.0
+def parse_events(stdout):
+    """Parse stream-json stdout into a list of event dicts (non-JSON lines skipped).
+    Walked once per attempt, then shared by parse_cost / is_rate_limited /
+    rate_limit_reset."""
+    events = []
     for line in (stdout or "").splitlines():
         line = line.strip()
         if not line.startswith("{"):
             continue
         try:
-            ev = json.loads(line)
+            events.append(json.loads(line))
         except json.JSONDecodeError:
             continue
+    return events
+
+
+def parse_cost(events):
+    """Best-effort: pull total_cost_usd from the final stream-json result event."""
+    cost = 0.0
+    for ev in events:
         if ev.get("type") == "result" and "total_cost_usd" in ev:
             cost = ev["total_cost_usd"]
     return cost
@@ -367,7 +382,7 @@ def _activity_line(ev):
 
 
 # ---------------------------------------------------------------- report
-def write_report(state, tasks, halt=None):
+def write_report(state, tasks, halt=None, note=None):
     done = sum(1 for t in tasks if t.done)
     blocked = [tid for tid, r in state["results"].items() if r.get("status") == "blocked"]
     todo = sum(1 for t in tasks if not t.done and t.id not in blocked)
@@ -381,6 +396,8 @@ def write_report(state, tasks, halt=None):
         f"- cumulative cost (usd, best-effort): {state.get('cost_usd', 0):.4f}",
         f"- updated: {state.get('updated_at', '')}",
     ]
+    if note:
+        lines += ["", f"**PAUSED: {note}**"]
     if halt:
         lines += ["", f"**HALTED: {halt}**"]
     lines += ["", "## tasks"]
@@ -490,6 +507,101 @@ def is_suppressing_diff(diff_text):
     return False
 
 
+# ---------------------------------------------------------------- rate-limit backoff
+# Spec §9: a rate-limit rejection is NOT a task failure. When Claude's usage/rate
+# limit rejects an attempt the request never ran -- counting it as a gate failure
+# would burn retries and falsely mark the task "blocked" (which resume then skips,
+# corrupting the run). Instead the harness discards any in-flight work (atomicity),
+# then per `on_rate_limit`: "pause-resume" (default) sleeps until the limit resets
+# and re-runs the SAME attempt (no retry consumed, consecutive_failures untouched);
+# "halt" -- or a wait beyond max_rate_limit_wait_s -- stops the loop cleanly with
+# resume instructions. Pure helpers (is_rate_limited / rate_limit_reset /
+# wait_seconds / handle_rate_limit) take `now` in and never sleep, so the logic is
+# unit-testable without wall-clock waits.
+RATE_LIMIT_BUFFER_S = 15                 # cushion so we retry just AFTER the reset
+DEFAULT_MAX_RATE_LIMIT_WAIT_S = 21600    # 6h: covers a five_hour reset, bounds garbage resetsAt
+
+ClaudeResult = collections.namedtuple("ClaudeResult", "cost rate_limited resets_at")
+
+
+class RateLimitHalt(Exception):
+    """Stop the whole loop cleanly at a rate limit (on_rate_limit=halt, or wait >
+    cap). The current task is discarded + left unmarked (todo) so a later resume
+    retries it -- never marked blocked, since a rate limit is not the task's fault."""
+
+    def __init__(self, resets_at):
+        self.resets_at = resets_at
+        super().__init__("rate limit reached")
+
+
+def is_rate_limited(events):
+    """True when a session was rejected for a usage/rate limit (spec §9), not a
+    normal gate/task failure. Two independent stream-json signals, either
+    sufficient (both appear on an org five-hour-limit rejection):
+      - a rate_limit_event whose rate_limit_info.status == "rejected"
+      - the terminal result event with api_error_status == 429"""
+    for ev in events:
+        if ev.get("type") == "rate_limit_event":
+            if (ev.get("rate_limit_info") or {}).get("status") == "rejected":
+                return True
+        if ev.get("type") == "result" and ev.get("api_error_status") == 429:
+            return True
+    return False
+
+
+def rate_limit_reset(events):
+    """Unix-epoch resetsAt from the (last) rejected rate_limit_event, or None when
+    absent -- e.g. a bare 429 result carrying no reset hint."""
+    resets = None
+    for ev in events:
+        if ev.get("type") != "rate_limit_event":
+            continue
+        info = ev.get("rate_limit_info") or {}
+        if info.get("status") == "rejected" and info.get("resetsAt") is not None:
+            resets = info["resetsAt"]
+    return resets
+
+
+def wait_seconds(resets_at, now, buffer_s=RATE_LIMIT_BUFFER_S):
+    """Seconds to sleep until a rate limit resets (spec §9). Pure: `now` is passed
+    in (never time.time()) so tests pin the arithmetic without sleeping. Returns
+    max(0, resets_at - now) + buffer; a missing or already-past resetsAt yields just
+    the buffer (a short courtesy wait, never negative)."""
+    base = 0 if resets_at is None else max(0, int(resets_at) - int(now))
+    return base + buffer_s
+
+
+def handle_rate_limit(result, cfg, now):
+    """Decide pause vs halt for a rate-limited attempt (spec §9). Returns the
+    seconds to sleep under pause-resume; raises RateLimitHalt when on_rate_limit is
+    "halt" or the wait would exceed max_rate_limit_wait_s. Pure w.r.t. time (`now`
+    passed in, no sleeping here) so the decision is unit-testable."""
+    if cfg.get("on_rate_limit", "pause-resume") == "halt":
+        raise RateLimitHalt(result.resets_at)
+    wait = wait_seconds(result.resets_at, now)
+    cap = cfg.get("max_rate_limit_wait_s", DEFAULT_MAX_RATE_LIMIT_WAIT_S)
+    if cap is not None and wait > cap:
+        raise RateLimitHalt(result.resets_at)
+    return wait
+
+
+def _rate_limit_halt_msg(resets_at):
+    """Human resume instruction for a rate-limit halt (report banner + stdout)."""
+    when = (time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(resets_at))
+            if resets_at else "the limit resets")
+    return (f"rate limit reached -- halted cleanly. Resume with "
+            f"`python .loop/orchestrator.py` after {when}.")
+
+
+def _announce_rate_limit_pause(resets_at, wait, state, tasks):
+    """Log a pending pause to stdout + activity.log + a transient report banner."""
+    when = time.strftime("%H:%M:%S", time.localtime(resets_at)) if resets_at else "?"
+    msg = f"rate limit hit -- pausing {wait}s (~{wait // 60}m), resumes ~{when}"
+    print(f"[loop] {msg}")
+    _append_activity(f"⏳ {msg}")
+    write_report(state, tasks, note=msg)
+
+
 # ---------------------------------------------------------------- main loop
 def process_task(task, cfg, adapter, state, backlog_rel):
     """Run one task through up to max_retries attempts. Returns (done, sha, reason)."""
@@ -507,8 +619,19 @@ def process_task(task, cfg, adapter, state, backlog_rel):
 
         prompt = build_prompt(task, gate, prior)
         label = f"{task.id} attempt {attempt}/{max_retries}: {task.title[:60]}"
-        cost = run_claude(prompt, cfg, logfile, model=model, label=label)
-        state["cost_usd"] = state.get("cost_usd", 0.0) + cost
+        # Run the attempt, pausing through any rate-limit rejection WITHOUT consuming
+        # a retry or counting a failure (spec §9). handle_rate_limit raises
+        # RateLimitHalt (caught in main) when policy is halt or the wait exceeds cap.
+        while True:
+            result = run_claude(prompt, cfg, logfile, model=model, label=label)
+            state["cost_usd"] = state.get("cost_usd", 0.0) + result.cost
+            if not result.rate_limited:
+                break
+            discard_inflight(before, backlog_rel)      # keep atomicity while paused
+            wait = handle_rate_limit(result, cfg, time.time())
+            _announce_rate_limit_pause(result.resets_at, wait, state, adapter.list())
+            save_state(state)                           # persist cost before the sleep
+            time.sleep(wait)
 
         cur_diff = git("diff", before)          # what the model changed this attempt
         new_commit = head_sha() != before
@@ -641,7 +764,14 @@ def main():
                 halt = "backlog empty"
                 break
 
-            done, sha, reason = process_task(task, cfg, adapter, state, backlog_rel)
+            try:
+                done, sha, reason = process_task(task, cfg, adapter, state, backlog_rel)
+            except RateLimitHalt as rl:
+                # Rate limit, not a task failure: discard in-flight, leave the task
+                # unmarked (todo) so a later resume retries it, and stop cleanly.
+                discard_inflight(head_sha(), backlog_rel)
+                halt = _rate_limit_halt_msg(rl.resets_at)
+                break
             if done:
                 state["results"][task.id] = {"status": "done", "commit": sha,
                                              "title": task.title}

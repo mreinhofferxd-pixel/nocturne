@@ -116,6 +116,8 @@ Blocked tasks carry a reason. No push/PR in v1 — the user reviews the branch.
   "branch": "loop/{ts}",                    // {ts} filled at first launch, pinned in state
   "model": "claude-opus-4-8",               // default opus+xhigh for max quality; drop to sonnet-5+medium to conserve tokens
   "effort": "xhigh",                        // claude --effort: low|medium|high|xhigh|max (omit to skip)
+  "on_rate_limit": "pause-resume",          // §9: pause-resume (sleep to reset, re-run same attempt) | halt (stop w/ resume msg)
+  "max_rate_limit_wait_s": 21600,           // cap on a single pause (6h); a longer reset halts instead of sleeping
   "budget": {
     "max_iterations": 50,
     "max_consecutive_failures": 3,
@@ -142,3 +144,11 @@ Blocked tasks carry a reason. No push/PR in v1 — the user reviews the branch.
 - Attached only: closing the session ends the loop. Detached/overnight is fast-follow.
 - Default model `claude-opus-4-8` + `effort: xhigh` for maximum quality; the harness passes
   `--effort` when set. Drop to `claude-sonnet-5` + `medium` per run to conserve tokens on a budget.
+- Rate limits (§9): a 429 / usage-limit rejection is **not** a task failure — it never
+  burns a retry or bumps `consecutive_failures`. Default `on_rate_limit: pause-resume`
+  discards in-flight work (atomicity), sleeps until `resetsAt` (+small buffer), then
+  re-runs the same attempt; progress streams to `.loop/activity.log` + a `PAUSED` banner
+  in `report.md`. Set `halt` to stop cleanly with a resume command instead.
+  `max_rate_limit_wait_s` (default 6h, covers a five-hour reset) caps one pause — a
+  longer reset halts rather than sleeps. Built by hand, never dogfooded (a mid-build 429
+  would corrupt the run testing it).
