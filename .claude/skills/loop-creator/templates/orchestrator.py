@@ -18,6 +18,7 @@ Stop:   python .loop/orchestrator.py stop    (drops .loop/STOP; halts at boundar
 Status: python .loop/orchestrator.py status  (prints .loop/report.md)
 """
 import collections
+import fnmatch
 import json
 import os
 import re
@@ -609,6 +610,34 @@ def _oversize_reason(base_reason, diff_text, threshold):
     return base_reason
 
 
+# ---------------------------------------------------------------- protected-paths guard
+# Spec §9: some paths are off-limits to the autonomous loop -- secrets, CI config,
+# lockfiles. touches_protected classifies an attempt's committed diff: it reads the
+# changed file HEADERS only (via _changed_files, never the `+`/`-` content) and matches
+# each path against each configured glob. A pattern ending in `/**` is a recursive
+# prefix (the prefix dir itself or anything under it); every other pattern uses fnmatch
+# glob semantics. Empty patterns never matches, so the guard is opt-in. Pure over the
+# diff + patterns, so unit-testable without a repo. The harness rejects an otherwise-green
+# attempt whose committed diff touches a protected path (see process_task).
+def touches_protected(diff_text, patterns):
+    """True when any file changed in `diff_text` matches any glob in `patterns`
+    (spec §9). Reads the diff's file headers only (via _changed_files), never the
+    `+`/`-` content. A pattern ending in `/**` is a recursive prefix: a path matches
+    when it equals the prefix or starts with `prefix + "/"`. Any other pattern is
+    matched with fnmatch.fnmatch. Empty `patterns` never matches. Pure."""
+    if not patterns:
+        return False
+    for path in _changed_files(diff_text):
+        for pat in patterns:
+            if pat.endswith("/**"):
+                prefix = pat[:-3]
+                if path == prefix or path.startswith(prefix + "/"):
+                    return True
+            elif fnmatch.fnmatch(path, pat):
+                return True
+    return False
+
+
 # ---------------------------------------------------------------- forward-flag (scope drift)
 # Spec §8.7 (semantic backstop, complements the mechanical oversize guard): the agent
 # that JUST finished a task appends one line to its commit body --
@@ -911,6 +940,7 @@ def process_task(task, cfg, adapter, state, backlog_rel):
     cur_diff = None
     last_gate_fail = None   # tail of the most-recent GATE failure, for §16 capture
     oversize_threshold = cfg.get("oversize_file_threshold", DEFAULT_OVERSIZE_FILE_THRESHOLD)
+    patterns = cfg.get("guardrails", {}).get("protected_paths", [])
     model = pick_model(task, cfg)
     flags = state.get("forward_flags") or []   # §8.7 flags raised by earlier tasks
 
@@ -965,6 +995,15 @@ def process_task(task, cfg, adapter, state, backlog_rel):
                     "acceptance criterion. Add a test that exercises and pins this "
                     "criterion so a future regression would fail the gate: "
                     f"{task.acceptance}"
+                )
+            elif ok and touches_protected(cur_diff, patterns):
+                # Green but the diff modifies a protected path (spec §9). Reject the
+                # attempt so the model solves the task without touching files it must
+                # not change -- mirrors the suppressing-diff rejection.
+                prior = (
+                    "Rejected: the gate passed but your diff modifies a protected "
+                    "path. This task must not modify: " + ", ".join(patterns) + ". "
+                    "Solve the task without changing those files."
                 )
             elif ok:
                 # Green. §16: if we recovered from a prior gate failure, mine it
