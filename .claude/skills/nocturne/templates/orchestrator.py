@@ -230,6 +230,28 @@ def run_gate(gate_cmds):
     return True, "\n".join(buf)[-2000:]
 
 
+def baseline_halt_reason(ok, tail, require_green):
+    """Halt message when the pre-run baseline gate is RED, else None (dogfood #6).
+
+    The loop assumes a green baseline: a pre-existing gate failure would surface
+    inside the FIRST task's attempts and be mislabeled a task failure (falsely
+    blocked -- symphony's red ruff baseline). When `require_green` is true and the
+    baseline run failed, return an actionable halt naming the situation, the fix
+    (repair the repo or adjust the gate; `require_green_baseline: false` opts
+    out), and a short excerpt of the failing tail. Pure, so the decision is
+    unit-testable without running a gate."""
+    if not require_green or ok:
+        return None
+    excerpt = (tail or "").strip()
+    if len(excerpt) > 400:
+        excerpt = "..." + excerpt[-400:]
+    return (
+        "baseline gate is RED before any task ran -- fix the repo or adjust the "
+        "gate (or set `require_green_baseline: false` to run anyway). "
+        f"Gate tail: {excerpt}"
+    )
+
+
 # ---------------------------------------------------------------- claude
 def build_prompt(task, gate, prior, flags=None):
     gate_str = " && ".join(gate) if gate else "(none configured)"
@@ -1200,7 +1222,17 @@ def main():
         max_wallclock_min = cfg.get("budget", {}).get("max_wallclock_min")
         started_epoch = state.get("started_epoch")   # None on pre-field state -> no cap
 
+        # Baseline-green preflight (dogfood #6): run the gate ONCE before any task
+        # starts. A red baseline means pre-existing failures -- the first task
+        # would inherit them and be falsely blocked. Halt up front, no task churn.
+        base_ok, base_tail = run_gate(cfg["gate"])
+        baseline_halt = baseline_halt_reason(
+            base_ok, base_tail, cfg.get("require_green_baseline", True))
+
         while True:
+            if baseline_halt:
+                halt = baseline_halt
+                break
             if STOP.exists():
                 STOP.unlink()
                 halt = "STOP sentinel"
