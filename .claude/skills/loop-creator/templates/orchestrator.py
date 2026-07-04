@@ -265,6 +265,17 @@ def pick_task(adapter, state):
     return None
 
 
+# ---------------------------------------------------------------- stuck check
+def no_progress(prev_diff, cur_diff):
+    """True when an attempt reproduced the previous attempt's diff verbatim.
+
+    Pure helper (spec §8.1). Identical diffs across retries mean the model is
+    spinning without converging, so the harness breaks early instead of burning
+    the remaining budget. The first attempt (prev_diff is None) can never be
+    stuck; two empty diffs in a row count as stuck (model did nothing twice)."""
+    return prev_diff is not None and prev_diff == cur_diff
+
+
 # ---------------------------------------------------------------- main loop
 def process_task(task, cfg, adapter, state, backlog_rel):
     """Run one task through up to max_retries attempts. Returns (done, sha, reason)."""
@@ -272,6 +283,7 @@ def process_task(task, cfg, adapter, state, backlog_rel):
     max_retries = cfg.get("budget", {}).get("max_retries", 3)
     before = head_sha()
     prior = None
+    prev_diff = None
 
     for attempt in range(1, max_retries + 1):
         n = state["iterations"] + 1
@@ -282,27 +294,28 @@ def process_task(task, cfg, adapter, state, backlog_rel):
         cost = run_claude(prompt, cfg, logfile)
         state["cost_usd"] = state.get("cost_usd", 0.0) + cost
 
+        cur_diff = git("diff", before)          # what the model changed this attempt
         new_commit = head_sha() != before
         dirty = working_dirty({backlog_rel})
 
-        if not new_commit:
+        if new_commit and not dirty:
+            ok, gate_out = run_gate(gate)
+            if ok:
+                adapter.mark_done(task)                 # check the box in BACKLOG.md
+                git("add", backlog_rel)
+                git("commit", "--amend", "--no-edit")   # fold checkbox into the task commit
+                return True, head_sha(), None
+            prior = gate_out
+        elif not new_commit:
             prior = "No commit was produced. You must commit your work."
-            discard_inflight(before, backlog_rel)
-            continue
-        if dirty:
+        else:  # committed but left the tree dirty
             prior = "Uncommitted changes remained after your commit. Commit everything in one commit."
-            discard_inflight(before, backlog_rel)
-            continue
 
-        ok, gate_out = run_gate(gate)
-        if ok:
-            adapter.mark_done(task)                 # check the box in BACKLOG.md
-            git("add", backlog_rel)
-            git("commit", "--amend", "--no-edit")   # fold checkbox into the task commit
-            return True, head_sha(), None
-
-        prior = gate_out
+        stuck = no_progress(prev_diff, cur_diff)
+        prev_diff = cur_diff
         discard_inflight(before, backlog_rel)
+        if stuck:
+            return False, None, "no progress across retries (identical diff) — likely stuck"
 
     return False, None, (prior or "gate never passed")[:500]
 
