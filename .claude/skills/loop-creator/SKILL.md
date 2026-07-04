@@ -1,10 +1,11 @@
 ---
 name: loop-creator
-description: Read a repo and its BACKLOG.md, then generate and launch a headless
-  claude -p while-loop that autonomously works the backlog (implement -> verify ->
-  commit) on a dedicated branch. v1 walking skeleton — markdown backlog, auto-detected
-  quality gate, attached run, trust-but-verify harness, atomic commits, resumable.
-  Use when the user wants to set up or start an autonomous dev loop over a backlog.
+description: Read a repo and its BACKLOG.md (or groom a SPEC/design doc into one),
+  then generate and launch a headless claude -p while-loop that autonomously works
+  the backlog (implement -> verify -> commit) on a dedicated branch. v1 walking
+  skeleton — markdown backlog or spec-groomed backlog, auto-detected quality gate,
+  attached run, trust-but-verify harness, atomic commits, resumable. Use when the
+  user wants to set up or start an autonomous dev loop over a backlog or a spec.
 ---
 
 # loop-creator (v1)
@@ -25,7 +26,7 @@ is the harness — gate, verify, state, atomic commits — not verbose prompt te
 
 ## v1 scope
 
-Markdown backlog only · gate auto-detected from repo · attached run (no detach) ·
+Markdown backlog, or groom a spec/design doc into one · gate auto-detected from repo · attached run (no detach) ·
 dedicated loop branch, no push/PR · single-instance lock + resumable state ·
 simple caps (max_iterations, max_consecutive_failures, max_retries).
 
@@ -38,18 +39,31 @@ scope-drift flags, detach, budget-dollar nuance, github/gitlab adapters.
 - Confirm target is a git repo and the worktree is clean (uncommitted BACKLOG.md
   is fine; anything else — ask the user to commit/stash first).
 - Confirm `claude` CLI is on PATH and `python` runs (v1 requires python).
-- Confirm a `BACKLOG.md` (or `TODO.md` / `PLAN.md`) with `- [ ]` checkboxes exists.
-  If not, offer to help write one — a checkbox list of small, single-commit tasks.
+- Confirm a **backlog source** exists — either a `BACKLOG.md` / `TODO.md` / `PLAN.md`
+  with `- [ ]` checkboxes, or a spec/design doc (`SPEC.md`, `DESIGN.md`, a PRD) to
+  groom from. If neither, offer to draft one interactively. The source is resolved
+  in step 2.
 
-### 2. Recon (light)
+### 2. Backlog acquisition (markdown or spec)
+- **Checkbox backlog already exists** — use it as-is. It is the source of truth;
+  skip to recon.
+- **Only a spec/design doc exists** — groom it into `BACKLOG.md` per
+  `reference/spec-to-backlog.md`: an ordered, dependency-aware checkbox list of
+  small, single-commit tasks, grouped into units by `##` headings. Diff the spec
+  against the current repo so already-done work yields no task. Flag ambiguous items
+  for the preview instead of guessing. Once written, the run **converges to the
+  markdown adapter** — the harness only ever reads checkboxes, never the spec.
+- Either way the result is one `BACKLOG.md` that the markdown adapter drives.
+
+### 3. Recon (light)
 Detect the stack, package manager, and test/lint/typecheck tooling. Record a short
 summary. This feeds the gate. (Full recon.json is a later increment.)
 
-### 3. Gate synthesis
+### 4. Gate synthesis
 Follow `reference/gate-derivation.md`: CI config -> package scripts -> language
 default. Produce an ordered command list. Prefer fast, deterministic commands.
 
-### 4. Write the loop into the target repo
+### 5. Write the loop into the target repo
 Create `.loop/` and drop in the harness:
 - Copy `templates/orchestrator.py` -> `.loop/orchestrator.py`
 - Copy `adapters/markdown_adapter.py` -> `.loop/markdown_adapter.py`
@@ -58,11 +72,12 @@ Create `.loop/` and drop in the harness:
 The orchestrator writes `.loop/.gitignore` (`*`) itself so `.loop/` stays out of
 git and out of `git clean`.
 
-### 5. Preview & confirm (one-time human gate)
-Show: backlog task count, the exact gate, the loop branch, and the caps. Require an
-explicit GO before launching.
+### 6. Preview & confirm (one-time human gate)
+Show: backlog task count, the exact gate, the loop branch, and the caps. If the
+backlog was groomed from a spec, also show the unit count and any **flagged/ambiguous**
+items for the user to resolve. Require an explicit GO before launching.
 
-### 6. Launch (attached)
+### 7. Launch (attached)
 ```
 python .loop/orchestrator.py
 ```
@@ -75,7 +90,7 @@ task, commits on green, checkpoints state every iteration.
 - **Resume:** re-run `python .loop/orchestrator.py`; it reads `.loop/state.json`
   and continues on the same branch.
 
-### 7. Handoff
+### 8. Handoff
 Summarize from `.loop/report.md`: done/blocked counts, commits, branch, halt reason.
 Blocked tasks carry a reason. No push/PR in v1 — the user reviews the branch.
 
