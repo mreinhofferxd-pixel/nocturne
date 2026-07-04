@@ -18,7 +18,6 @@ Stop:  create .loop/STOP  (honored at the next task boundary)
 """
 import json
 import os
-import re
 import subprocess
 import sys
 import time
