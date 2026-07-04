@@ -102,8 +102,8 @@ Blocked tasks carry a reason. No push/PR in v1 — the user reviews the branch.
   "backlog": { "adapter": "markdown", "path": "BACKLOG.md" },
   "gate": ["ruff check .", "pytest -q"],   // from gate-derivation
   "branch": "loop/{ts}",                    // {ts} filled at first launch, pinned in state
-  "model": "claude-sonnet-5",               // Pro/subscription: sonnet+medium to conserve tokens; opus for hard tasks
-  "effort": "medium",                       // claude --effort: low|medium|high|xhigh|max (omit to skip)
+  "model": "claude-opus-4-8",               // default opus+xhigh for max quality; drop to sonnet-5+medium to conserve tokens
+  "effort": "xhigh",                        // claude --effort: low|medium|high|xhigh|max (omit to skip)
   "budget": {
     "max_iterations": 50,
     "max_consecutive_failures": 3,
@@ -128,5 +128,5 @@ Blocked tasks carry a reason. No push/PR in v1 — the user reviews the branch.
 - `--allowedTools` includes `Bash` broadly so the model can run the gate and commit.
   On a trusted repo this is the accepted risk (no denylist in v1).
 - Attached only: closing the session ends the loop. Detached/overnight is fast-follow.
-- Default model `claude-sonnet-5` + `effort: medium` suits Pro/subscription budgets; the
-  harness passes `--effort` when set. Raise to opus / higher effort per run for hard work.
+- Default model `claude-opus-4-8` + `effort: xhigh` for maximum quality; the harness passes
+  `--effort` when set. Drop to `claude-sonnet-5` + `medium` per run to conserve tokens on a budget.
