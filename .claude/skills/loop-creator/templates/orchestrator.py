@@ -867,6 +867,26 @@ def over_budget(cost_usd, cap):
     return cost_usd >= cap
 
 
+def avg_task_cost(cost_usd, tasks_done):
+    """Mean best-effort cost of a completed task so far (spec §9 projection input).
+    Pure. Returns 0.0 when no task has completed yet (tasks_done <= 0) so the first
+    boundary has no average to project with -- the guard then reduces to the plain
+    over_budget check."""
+    if tasks_done <= 0:
+        return 0.0
+    return cost_usd / tasks_done
+
+
+def projected_over_budget(cost_so_far, avg_cost, cap):
+    """True when starting one more ~average-cost task would breach the dollar cap
+    (spec §9): never START a task whose projected end-cost exceeds the cap. A None /
+    0 / negative cap means "no cap" -> always False (opt-in, mirrors over_budget).
+    Pure: `avg_cost` is supplied by avg_task_cost so the projection is unit-testable."""
+    if cap is None or cap <= 0:
+        return False
+    return cost_so_far + avg_cost > cap
+
+
 def over_wallclock(started_epoch, now_epoch, max_minutes):
     """True when a positive wall-clock cap is set and the run's elapsed time has
     reached it (spec §9). A None / 0 / negative `max_minutes` means "no cap", and a
@@ -1067,6 +1087,15 @@ def main():
                 break
             if over_budget(state["cost_usd"], cap):
                 halt = f"budget cap reached (${state['cost_usd']:.4f} / ${cap:.2f})"
+                break
+            # §9 projection: never START a task whose projected end-cost (spend so far
+            # + the running average task cost) would breach the cap. On the first task
+            # done_count is 0 so avg is 0 and this reduces to the over_budget case above.
+            done_count = sum(1 for r in state["results"].values() if r.get("status") == "done")
+            avg = avg_task_cost(state["cost_usd"], done_count)
+            if projected_over_budget(state["cost_usd"], avg, cap):
+                halt = (f"projected budget cap reached (${state['cost_usd']:.4f} + "
+                        f"~${avg:.4f}/task > ${cap:.2f})")
                 break
             if over_wallclock(started_epoch, time.time(), max_wallclock_min):
                 elapsed_min = (time.time() - started_epoch) / 60
