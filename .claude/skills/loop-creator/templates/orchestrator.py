@@ -590,6 +590,52 @@ def acceptance_in_diff(diff_text, criterion):
     return any(tok in added for tok in tokens)
 
 
+# ---------------------------------------------------------------- non-codifiable-acceptance routing
+# Spec §8.6: an acceptance criterion is only ENFORCEABLE when it names something the
+# harness can mechanically check -- a test identifier (acceptance_tokens) or a
+# runnable-command signal (a known runner/verb). Purely subjective prose ("looks
+# clean", "feels responsive") gives the harness no handle, so auto-mode must NOT guess
+# a green: it refuses the task at pick time, routes it to a human checkpoint, and moves
+# on to the rest of the backlog. This is a ROUTING decision, distinct from the
+# acceptance ENFORCEMENT branch in process_task (which fires only for codifiable,
+# test-named criteria). Both helpers are pure so the decision is unit-testable.
+_RUNNABLE_SIGNAL = re.compile(
+    r"""
+      \bpytest\b | \bpython\b | \bnpm\b | \bpnpm\b   # known test/build runners
+    | \bruff\b | \bmake\b
+    | (?:^|\s)\./                                     # a leading ./ script invocation
+    | `[^`]+`                                         # a backtick-wrapped command
+    | \bexit\s+0\b | \breturns\s+0\b | \bpasses\b     # explicit success phrasing
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
+
+def is_codifiable_acceptance(criterion):
+    """True when an acceptance criterion names something the harness can mechanically
+    verify (spec §8.6): either it names a test (acceptance_tokens is non-empty) OR it
+    carries a runnable-command signal -- a known runner/verb (pytest/python/npm/pnpm/
+    ruff/make), a leading `./`, a backtick-wrapped command, or an explicit success
+    phrase (exit 0 / returns 0 / passes). False for empty/None or purely subjective
+    prose that names no such handle. Pure."""
+    text = criterion or ""
+    if not text.strip():
+        return False
+    if acceptance_tokens(text):
+        return True
+    return bool(_RUNNABLE_SIGNAL.search(text))
+
+
+def needs_human_checkpoint(task):
+    """True when a task carries an acceptance criterion the harness cannot codify
+    (spec §8.6): auto-mode refuses to guess at subjective acceptance and routes the
+    task to a human checkpoint instead. False when the task has no acceptance or a
+    codifiable one. Pure decision over the task, so the pick-time routing is
+    unit-testable without a run."""
+    acceptance = getattr(task, "acceptance", None)
+    return bool(acceptance) and not is_codifiable_acceptance(acceptance)
+
+
 # ---------------------------------------------------------------- oversize guard (scope drift)
 # Spec §8.7: scoping is owned up front, but the harness already holds the diff and
 # retry count, so for zero extra tokens it can catch drift. When a task is about to
@@ -1167,6 +1213,24 @@ def main():
             if task is None:
                 halt = "backlog empty"
                 break
+
+            # §8.6 non-codifiable-acceptance routing: a task whose acceptance criterion
+            # names no mechanically-checkable handle (test id or runnable command) can't
+            # be verified by the harness, so auto-mode refuses to guess a green. Mark it
+            # blocked for a human checkpoint and continue the rest of the backlog. This
+            # is a ROUTING decision, not a task failure -- consecutive_failures untouched.
+            if needs_human_checkpoint(task):
+                state["results"][task.id] = {
+                    "status": "blocked",
+                    "reason": "acceptance not codifiable — needs a human checkpoint",
+                    "title": task.title,
+                    "retries": 0,
+                }
+                print(f"[loop] CHECKPOINT {task.id}")
+                state["iterations"] += 1
+                save_state(state)
+                write_report(state, adapter.list())
+                continue
 
             try:
                 done, sha, reason = process_task(task, cfg, adapter, state, backlog_rel)
