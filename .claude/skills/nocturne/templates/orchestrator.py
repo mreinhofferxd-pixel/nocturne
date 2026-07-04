@@ -149,6 +149,16 @@ def working_dirty(exclude):
     return any(p not in exclude for p in _porcelain_paths(out))
 
 
+def needs_backlog_seed(porcelain_paths, backlog_rel):
+    """True when the backlog file itself appears among the parsed
+    `git status --porcelain` paths -- untracked or modified (dogfood #6).
+    Launching with a dirty backlog is allowed, but the first done task's
+    checkbox `--amend` would then fold ALL pending backlog edits into that
+    task's commit. main() seeds a dedicated backlog commit first so every task
+    commit carries only its own checkbox flip. Pure over the parsed paths."""
+    return any(p == backlog_rel for p in porcelain_paths)
+
+
 def discard_inflight(before, backlog):
     """Restore atomicity: drop the model's commit (if any) and all changes,
     keeping the untracked backlog and .loop/ intact."""
@@ -1213,6 +1223,14 @@ def main():
             }
         state["pid"] = os.getpid()
         ensure_branch(state["branch"])
+        # Seed an uncommitted backlog as its own commit (dogfood #6): otherwise
+        # the first done task's checkbox --amend folds every pending backlog
+        # edit into that task's commit.
+        if needs_backlog_seed(
+                _porcelain_paths(run(["git", "status", "--porcelain"]).stdout),
+                backlog_rel):
+            git("add", backlog_rel)
+            git("commit", "-m", "chore: seed nocturne backlog")
         save_state(state)
         _append_activity(f"\n═══ loop {state['branch']} · started {time.strftime('%H:%M:%S')} ═══")
 
