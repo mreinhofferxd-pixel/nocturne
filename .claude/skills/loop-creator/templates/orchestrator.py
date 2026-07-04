@@ -821,6 +821,19 @@ def over_budget(cost_usd, cap):
     return cost_usd >= cap
 
 
+def over_wallclock(started_epoch, now_epoch, max_minutes):
+    """True when a positive wall-clock cap is set and the run's elapsed time has
+    reached it (spec §9). A None / 0 / negative `max_minutes` means "no cap", and a
+    missing/None `started_epoch` (older state predating the field) also degrades to
+    no-cap -> always False, so the guard is opt-in and resume-safe. Like the dollar
+    cap, checked ONLY at the task boundary so a running attempt finishes atomically.
+    Pure: `now_epoch` is passed in (never time.time()) so the arithmetic is
+    unit-testable without sleeping."""
+    if max_minutes is None or max_minutes <= 0 or not started_epoch:
+        return False
+    return now_epoch - started_epoch >= max_minutes * 60
+
+
 # ---------------------------------------------------------------- main loop
 def process_task(task, cfg, adapter, state, backlog_rel):
     """Run one task through up to max_retries attempts. Returns (done, sha, reason)."""
@@ -967,6 +980,7 @@ def main():
                 "cost_usd": 0.0,
                 "results": {},
                 "started_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                "started_epoch": time.time(),
             }
         state["pid"] = os.getpid()
         ensure_branch(state["branch"])
@@ -976,6 +990,8 @@ def main():
         max_iter = cfg.get("budget", {}).get("max_iterations", 50)
         max_consec = cfg.get("budget", {}).get("max_consecutive_failures", 3)
         cap = cfg.get("budget", {}).get("max_cost_usd")
+        max_wallclock_min = cfg.get("budget", {}).get("max_wallclock_min")
+        started_epoch = state.get("started_epoch")   # None on pre-field state -> no cap
 
         while True:
             if STOP.exists():
@@ -990,6 +1006,10 @@ def main():
                 break
             if over_budget(state["cost_usd"], cap):
                 halt = f"budget cap reached (${state['cost_usd']:.4f} / ${cap:.2f})"
+                break
+            if over_wallclock(started_epoch, time.time(), max_wallclock_min):
+                elapsed_min = (time.time() - started_epoch) / 60
+                halt = f"wall-clock cap reached ({elapsed_min:.0f}m / {max_wallclock_min:.0f}m)"
                 break
 
             task = pick_task(adapter, state)
