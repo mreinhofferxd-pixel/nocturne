@@ -24,14 +24,19 @@ atomically committed or fully discarded (`git reset --hard`). One commit per tas
 Keep everything lean (strong models need structure, not hand-holding). The value
 is the harness — gate, verify, state, atomic commits — not verbose prompt text.
 
-## v1 scope
+## v1 scope (walking skeleton, since extended)
 
-Markdown backlog, or groom a spec/design doc into one · gate auto-detected from repo · attached run (no detach) ·
-dedicated loop branch, no push/PR · single-instance lock + resumable state ·
-simple caps (max_iterations, max_consecutive_failures, max_retries).
+Markdown backlog, or groom a spec/design doc into one · gate auto-detected from repo,
+baseline must be green · attached run · dedicated loop branch, no push/PR ·
+single-instance lock + resumable state · caps: iterations, consecutive failures,
+retries, per-task seconds, dollar + wall-clock budget (§9) · per-task model tiering +
+retry escalation (§8.4) · anti-gaming diff-guard (§8.5) · acceptance
+parse/enforce/route (§8.6) · scope-drift guards: oversize + forward-flags (§8.7) ·
+rate-limit pause-resume (§9) · checkpoint modes (§9) · protected paths (§9) ·
+learned.md conventions (§16) · live activity feed.
 
-Out of v1: model tiering, PR automation, anti-gaming diff-guard, acceptance tests,
-scope-drift flags, detach, budget-dollar nuance, github/gitlab adapters.
+Still out: detach lifecycle (§11), dependency-aware PRs (§8.3 consumer),
+github/gitlab adapters (§17).
 
 ## Steps
 
