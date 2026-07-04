@@ -45,15 +45,22 @@ scope-drift flags, detach, budget-dollar nuance, github/gitlab adapters.
   in step 2.
 
 ### 2. Backlog acquisition (markdown or spec)
-- **Checkbox backlog already exists** — use it as-is. It is the source of truth;
-  skip to recon.
-- **Only a spec/design doc exists** — groom it into `BACKLOG.md` per
+- **Checkbox backlog only** — use it as-is. It is the source of truth; skip to recon.
+- **Spec/design doc only** — groom it into `BACKLOG.md` per
   `reference/spec-to-backlog.md`: an ordered, dependency-aware checkbox list of
   small, single-commit tasks, grouped into units by `##` headings. Diff the spec
   against the current repo so already-done work yields no task. Flag ambiguous items
-  for the preview instead of guessing. Once written, the run **converges to the
-  markdown adapter** — the harness only ever reads checkboxes, never the spec.
-- Either way the result is one `BACKLOG.md` that the markdown adapter drives.
+  for the preview instead of guessing.
+- **Both a checkbox backlog AND a spec** — default to the backlog as-is, but **offer a
+  spec-sync / re-groom pass** (`reference/spec-to-backlog.md` "Spec-sync"): diff the
+  spec against the *union* of (existing backlog tasks ∪ current repo state) and
+  **append only the genuinely missing tasks** as new `- [ ]` items under the right
+  `##` units — never rewrite, reorder, or re-check existing lines. Preview the
+  new-task count + any flagged items; require GO. Idempotent: if nothing is missing
+  (all spec work is already listed or already built) it appends nothing. This is the
+  manual reconcile step toward self-grooming (spec §17); the human GO stays.
+- Once resolved the run **converges to the markdown adapter** — the harness only ever
+  reads checkboxes, never the spec. The result is one `BACKLOG.md` the adapter drives.
 
 ### 3. Recon (light)
 Detect the stack, package manager, and test/lint/typecheck tooling. Record a short
