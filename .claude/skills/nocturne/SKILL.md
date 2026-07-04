@@ -131,7 +131,7 @@ Blocked tasks carry a reason. No push/PR in v1 — the user reviews the branch.
 
 ```jsonc
 {
-  "mode": "auto",
+  "mode": "auto",                           // §9: auto | checkpoint-task (pause after each task) | checkpoint-unit (pause at ## unit boundaries)
   "backlog": { "adapter": "markdown", "path": "BACKLOG.md" },
   "gate": ["ruff check .", "pytest -q"],   // from gate-derivation
   "branch": "loop/{ts}",                    // {ts} filled at first launch, pinned in state
@@ -140,15 +140,23 @@ Blocked tasks carry a reason. No push/PR in v1 — the user reviews the branch.
   "on_rate_limit": "pause-resume",          // §9: pause-resume (sleep to reset, re-run same attempt) | halt (stop w/ resume msg)
   "max_rate_limit_wait_s": 21600,           // cap on a single pause (6h); a longer reset halts instead of sleeping
   "oversize_file_threshold": 25,            // §8.7: a blocked task whose last diff touches more files than this is flagged "too large — split needed"
+  "require_green_baseline": true,           // run the gate once pre-loop; halt if the baseline is red (false = run anyway)
   "observability": { "live_feed": true },   // stream the decoded feed to this terminal (in-session live view); false = silent unattended
   "budget": {
     "max_iterations": 50,
     "max_consecutive_failures": 3,
     "max_retries": 3,
     "max_turns": 30,
-    "max_seconds_per_task": 1800
+    "max_seconds_per_task": 1800,
+    "max_cost_usd": null,                   // §9 dollar cap + pre-task projection; null/0 = no cap
+    "max_wallclock_min": null               // §9 wall-clock cap in minutes; null/0 = no cap
   },
-  "guardrails": { "allowed_tools": ["Edit", "Write", "Bash", "Read", "Grep", "Glob"] }
+  "guardrails": {
+    "allowed_tools": ["Edit", "Write", "Bash", "Read", "Grep", "Glob"],
+    "protected_paths": []                   // §9 globs the loop must not touch (e.g. ".env*", "secrets/**"); green-but-rejected post-commit; empty = off
+  }
+  // optional overrides: "tier_models" ({simple|complex|very-complex: model}) remaps
+  // [tier]-tagged tasks (§8.4); "escalation_ladder" ([model, ...]) reorders retry escalation.
 }
 ```
 

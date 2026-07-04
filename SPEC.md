@@ -342,6 +342,14 @@ All three implement the same control flow and read the same `loop.config.json`, 
 }
 ```
 
+> **v1 naming note (SKILL.md's schema is authoritative for the shipped harness):**
+> v1 spells some of this differently — a flat `model` default plus optional
+> `tier_models` / `escalation_ladder` overrides (hyphenated `very-complex`) instead
+> of the `models{}` block; `on_rate_limit` + `max_rate_limit_wait_s` at top level;
+> `budget.max_consecutive_failures` (not `max_consecutive_blocked`); plus v1 keys
+> this block predates (`oversize_file_threshold`, `observability.live_feed`,
+> `require_green_baseline`). `git`, `tdd`, `monorepo` remain future work.
+
 ---
 
 ## 14. Example run
