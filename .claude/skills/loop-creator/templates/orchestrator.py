@@ -229,7 +229,7 @@ def run_gate(gate_cmds):
 
 
 # ---------------------------------------------------------------- claude
-def build_prompt(task, gate, prior):
+def build_prompt(task, gate, prior, flags=None):
     gate_str = " && ".join(gate) if gate else "(none configured)"
     p = (
         f"Task: {task.title}\n\n"
@@ -239,8 +239,12 @@ def build_prompt(task, gate, prior):
         f"- Stay within the scope of this one task.\n"
         f"- Do not weaken tests, gate config, lint, or CI to make the gate pass.\n"
         f"- Finish with exactly one commit (conventional-commit message). Do not push.\n"
-        f"- Do not edit BACKLOG.md or anything under .loop/."
+        f"- Do not edit BACKLOG.md or anything under .loop/.\n"
+        f"- If your work invalidates a LATER backlog task's premise (e.g. a changed "
+        f"model or API shape), add one line to your commit body: "
+        f"'LOOP-FLAG: <what changed>'."
     )
+    p += format_flag_notice(flags)
     if prior:
         p += f"\n\nYour previous attempt failed the gate:\n{prior}\n\nDiagnose and fix."
     return p
@@ -559,6 +563,40 @@ def _oversize_reason(base_reason, diff_text, threshold):
     return base_reason
 
 
+# ---------------------------------------------------------------- forward-flag (scope drift)
+# Spec §8.7 (semantic backstop, complements the mechanical oversize guard): the agent
+# that JUST finished a task appends one line to its commit body --
+# `LOOP-FLAG: <what changed>` -- when its work invalidated a LATER task's premise
+# (e.g. "changed the User model shape"). The harness harvests these from the commit
+# and surfaces them to subsequent tasks' prompts. Purely advisory + near-zero cost:
+# usually there are none (empty notice -> zero prompt bytes), and the current working
+# agent never re-validates its own scope. Both transforms are pure. v1 accumulates
+# flags (deduped + bounded) across the run rather than mapping each to a specific
+# target task -- a bounded heads-up that never misses the target.
+FORWARD_FLAG_LIMIT = 10
+_FORWARD_FLAG = re.compile(r"^[ \t]*LOOP-FLAG:[ \t]*(.+?)[ \t]*$", re.IGNORECASE | re.MULTILINE)
+
+
+def parse_forward_flags(commit_body):
+    """Extract forward-flag lines from a commit body (spec §8.7): each
+    `LOOP-FLAG: <what changed>` line becomes one whitespace-trimmed flag string.
+    Pure. Empty/None body or no markers -> []."""
+    return [m.group(1).strip() for m in _FORWARD_FLAG.finditer(commit_body or "")
+            if m.group(1).strip()]
+
+
+def format_flag_notice(flags):
+    """Render pending forward-flags (spec §8.7) as a lean prompt heads-up, or '' when
+    there are none (the common case, so zero prompt cost). Advisory only: the working
+    agent adapts if a flag affects it but never re-validates scope."""
+    flags = [str(f).strip() for f in (flags or []) if str(f).strip()]
+    if not flags:
+        return ""
+    lines = "\n".join(f"- {f}" for f in flags)
+    return ("\n\nHeads-up from earlier tasks (an earlier change may affect this "
+            "task's premise; adapt if needed, do not re-scope):\n" + lines)
+
+
 # ---------------------------------------------------------------- rate-limit backoff
 # Spec §9: a rate-limit rejection is NOT a task failure. When Claude's usage/rate
 # limit rejects an attempt the request never ran -- counting it as a gate failure
@@ -780,13 +818,14 @@ def process_task(task, cfg, adapter, state, backlog_rel):
     last_gate_fail = None   # tail of the most-recent GATE failure, for §16 capture
     oversize_threshold = cfg.get("oversize_file_threshold", DEFAULT_OVERSIZE_FILE_THRESHOLD)
     model = pick_model(task, cfg)
+    flags = state.get("forward_flags") or []   # §8.7 flags raised by earlier tasks
 
     for attempt in range(1, max_retries + 1):
         n = state["iterations"] + 1
         logfile = LOGDIR / f"iteration-{n:03d}-a{attempt}.md"
         print(f"[loop] task {task.id} '{task.title}' attempt {attempt}/{max_retries} [{model}]")
 
-        prompt = build_prompt(task, gate, prior)
+        prompt = build_prompt(task, gate, prior, flags=flags)
         label = f"{task.id} attempt {attempt}/{max_retries}: {task.title[:60]}"
         # Run the attempt, pausing through any rate-limit rejection WITHOUT consuming
         # a retry or counting a failure (spec §9). handle_rate_limit raises
@@ -952,6 +991,14 @@ def main():
                                              "title": task.title}
                 state["consecutive_failures"] = 0
                 print(f"[loop] DONE {task.id} -> {sha[:9]}")
+                # §8.7 forward-flag: harvest any LOOP-FLAG lines the finished
+                # agent left in its commit and surface them to later tasks.
+                new_flags = parse_forward_flags(git("log", "-1", "--format=%B", sha))
+                if new_flags:
+                    state["forward_flags"] = dedupe_bounded(
+                        (state.get("forward_flags") or []) + new_flags,
+                        limit=FORWARD_FLAG_LIMIT,
+                    )
             else:
                 discard_inflight(head_sha(), backlog_rel)  # belt + braces: ensure clean
                 prev = state["results"].get(task.id, {})
