@@ -36,6 +36,7 @@ STOP = LOOP / "STOP"
 LOGDIR = LOOP / "log"
 REPORT = LOOP / "report.md"
 ACTIVITY = LOOP / "activity.log"   # decoded, tail-able live feed of the running session
+LEARNED = LOOP / "learned.md"      # §16 rolling repo conventions, injected each iteration
 
 sys.path.insert(0, str(LOOP))  # markdown_adapter.py is copied alongside this file
 from markdown_adapter import MarkdownBacklog  # noqa: E402
@@ -258,6 +259,7 @@ def run_claude(prompt, cfg, logfile, model=None, label=""):
     )
     if cfg.get("effort"):
         cmd += f' --effort {cfg["effort"]}'
+    cmd += _learned_flag(LEARNED)   # §16: inject rolling learned conventions when present
     timeout = budget.get("max_seconds_per_task", 1800)
 
     # Stream stdout line-by-line so the raw log is tail-able live and activity.log
@@ -706,6 +708,66 @@ def append_learned(path, bullet):
     return bullets
 
 
+# §16 capture: on a gate-failure -> green recovery, mine the FAILURE tail for a
+# reusable, repo-environmental friction (missing module/tool, unrecognized command)
+# and record it. Deliberately narrow -- one-off task bugs (a failed assertion, a
+# lint rule) are NOT conventions, so they yield None and never pollute learned.md.
+# Each signal maps a recognized error to a short, generalizable convention hint.
+_LEARN_SIGNALS = [
+    (re.compile(r"No module named ['\"]([\w.]+)['\"]"),
+     "python module `{0}` is required -- ensure it is installed/declared before use"),
+    (re.compile(r"Cannot find module ['\"]([^'\"]+)['\"]"),
+     "node module `{0}` is required -- ensure it is installed before use"),
+    (re.compile(r"([^\s:'\"]+): command not found"),
+     "`{0}` is not on PATH -- install it or invoke the correct command"),
+    (re.compile(r"[Tt]he term ['\"]?([\w.\-]+)['\"]? is not recognized"),
+     "`{0}` is not recognized here -- install it or use the correct command"),
+]
+
+
+def learned_from_failure(gate_failure_tail):
+    """Pure heuristic (spec §16): scan a gate-failure tail for a REUSABLE,
+    repo-environmental friction signal (missing module/tool, unrecognized command)
+    and return a one-line convention hint, or None when the failure is a one-off
+    task bug not worth remembering. Narrow by design so the injected learned layer
+    stays lean and generalizable -- task-specific assertion/lint failures never
+    become bullets. Returns the FIRST matching signal for determinism."""
+    text = gate_failure_tail or ""
+    for pattern, template in _LEARN_SIGNALS:
+        m = pattern.search(text)
+        if m:
+            return template.format(m.group(1))
+    return None
+
+
+def _capture_learned(gate_failure_tail, path=LEARNED):
+    """On a gate-failure -> green recovery, mine the failure for a reusable
+    convention and append it to learned.md (spec §16). No-op (returns None) when
+    there was no prior gate failure this task, or the heuristic finds nothing
+    reusable -- so learned.md only grows on genuine, generalizable friction."""
+    if not gate_failure_tail:
+        return None
+    bullet = learned_from_failure(gate_failure_tail)
+    if bullet:
+        append_learned(str(path), bullet)
+    return bullet
+
+
+def _learned_flag(path=LEARNED):
+    """Return the ` --append-system-prompt-file <path>` fragment injecting the
+    rolling learned conventions into a claude run (spec §16), or '' when the file
+    is absent or blank. Only a non-empty learned.md is injected, so early iterations
+    (before anything is learned) add nothing. Reads the file but returns just the
+    flag fragment, so the wiring is unit-testable without spawning claude."""
+    p = Path(path)
+    try:
+        if p.exists() and p.read_text(encoding="utf-8").strip():
+            return f' --append-system-prompt-file "{p}"'
+    except OSError:
+        pass
+    return ""
+
+
 # ---------------------------------------------------------------- main loop
 def process_task(task, cfg, adapter, state, backlog_rel):
     """Run one task through up to max_retries attempts. Returns (done, sha, reason)."""
@@ -715,6 +777,7 @@ def process_task(task, cfg, adapter, state, backlog_rel):
     prior = None
     prev_diff = None
     cur_diff = None
+    last_gate_fail = None   # tail of the most-recent GATE failure, for §16 capture
     oversize_threshold = cfg.get("oversize_file_threshold", DEFAULT_OVERSIZE_FILE_THRESHOLD)
     model = pick_model(task, cfg)
 
@@ -756,11 +819,15 @@ def process_task(task, cfg, adapter, state, backlog_rel):
                     "[modifies-tests]."
                 )
             elif ok:
+                # Green. §16: if we recovered from a prior gate failure, mine it
+                # for a reusable repo convention before committing.
+                _capture_learned(last_gate_fail)
                 adapter.mark_done(task)                 # check the box in BACKLOG.md
                 git("add", backlog_rel)
                 git("commit", "--amend", "--no-edit")   # fold checkbox into the task commit
                 return True, head_sha(), None
             else:
+                last_gate_fail = gate_out               # §16 capture source on recovery
                 prior = gate_out
         elif not new_commit:
             prior = "No commit was produced. You must commit your work."
