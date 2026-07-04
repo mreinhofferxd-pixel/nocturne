@@ -46,6 +46,12 @@ scope-drift flags, detach, budget-dollar nuance, github/gitlab adapters.
 
 ### 2. Backlog acquisition (markdown or spec)
 - **Checkbox backlog only** — use it as-is. It is the source of truth; skip to recon.
+- **Prose backlog (no checkboxes)** — a `BACKLOG.md` whose items are prose bullets
+  or paragraphs (symphony: prose + remove-when-done) is a SPEC in disguise: it is
+  NOT adapter-compatible, so auto-route it through the spec-groom path below. Write
+  the groomed checkbox list to a **separate file** (e.g. `NOCTURNE_BACKLOG.md`) and
+  point `backlog.path` at it — never rewrite the repo's own backlog into a different
+  convention. Detection: the file has list items / sections but zero `- [ ]` boxes.
 - **Spec/design doc only** — groom it into `BACKLOG.md` per
   `reference/spec-to-backlog.md`: an ordered, dependency-aware checkbox list of
   small, single-commit tasks, grouped into units by `##` headings. Diff the spec

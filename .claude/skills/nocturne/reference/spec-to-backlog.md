@@ -5,13 +5,21 @@ doc / PRD (`SPEC.md`, `DESIGN.md`, `PLAN.md`, an RFC, a linked doc the user past
 the design layer grooms it into an ordered `BACKLOG.md` and then **converges to the
 markdown adapter** — the harness only ever reads checkboxes, never the spec.
 
+A **prose backlog counts as a spec**: a `BACKLOG.md` with bullets/sections but zero
+`- [ ]` checkboxes (symphony: prose items, removed when done) cannot drive the
+adapter. Groom it like any spec — but write the result to a **separate file**
+(`NOCTURNE_BACKLOG.md`) and set `backlog.path` to it. The repo's own backlog keeps
+its convention untouched; the two files coexist (theirs = intent, ours = the
+machine-checkable work-list for this run).
+
 This is the `interactive` adapter of spec §6, seeded from a file instead of a chat
 goal. The decomposition is an LLM job (prose -> tasks), not a parser job. Do it in
 the design layer, once, before the loop starts.
 
 ## Output contract
 
-Produce a `BACKLOG.md` where:
+Produce a `BACKLOG.md` (or `NOCTURNE_BACKLOG.md` when the repo's own backlog uses
+a different convention — see above) where:
 
 - **Units = `##` headings.** A unit is the smallest set of tasks that can merge on
   its own (spec §6). Independent deliverables are their own units; a dependency
