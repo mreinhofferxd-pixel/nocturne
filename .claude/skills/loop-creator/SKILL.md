@@ -91,7 +91,12 @@ python .loop/orchestrator.py
 Attached = tied to this session. The harness checks out `loop/<ts>`, works each
 task, commits on green, checkpoints state every iteration.
 
-- **Monitor:** `.loop/report.md` (live) and `.loop/log/iteration-*.md`.
+- **Monitor:**
+  - `.loop/activity.log` — decoded **live feed** of the running session (tool calls,
+    assistant text, results), flushed line-by-line. Follow it:
+    `Get-Content .loop/activity.log -Wait` (PowerShell) / `tail -f .loop/activity.log`.
+  - `.loop/report.md` — task-boundary dashboard (done/blocked/todo, cost).
+  - `.loop/log/iteration-*.md` — raw stream-json per attempt, also written live.
 - **Stop:** create `.loop/STOP` (honored at the next task boundary — never
   mid-write). PowerShell: `New-Item .loop/STOP`.
 - **Resume:** re-run `python .loop/orchestrator.py`; it reads `.loop/state.json`

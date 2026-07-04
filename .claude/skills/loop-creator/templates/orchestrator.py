@@ -22,6 +22,7 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -33,6 +34,7 @@ LOCK = LOOP / "lock"
 STOP = LOOP / "STOP"
 LOGDIR = LOOP / "log"
 REPORT = LOOP / "report.md"
+ACTIVITY = LOOP / "activity.log"   # decoded, tail-able live feed of the running session
 
 sys.path.insert(0, str(LOOP))  # markdown_adapter.py is copied alongside this file
 from markdown_adapter import MarkdownBacklog  # noqa: E402
@@ -234,7 +236,7 @@ def build_prompt(task, gate, prior):
     return p
 
 
-def run_claude(prompt, cfg, logfile, model=None):
+def run_claude(prompt, cfg, logfile, model=None, label=""):
     tools = ",".join(cfg["guardrails"]["allowed_tools"])
     budget = cfg.get("budget", {})
     model = model or cfg["model"]
@@ -247,15 +249,42 @@ def run_claude(prompt, cfg, logfile, model=None):
     )
     if cfg.get("effort"):
         cmd += f' --effort {cfg["effort"]}'
-    stdout = ""
+    timeout = budget.get("max_seconds_per_task", 1800)
+
+    # Stream stdout line-by-line so the raw log is tail-able live and activity.log
+    # gets a decoded, readable running feed. Full stdout is still captured for the
+    # cost parse. A watchdog thread enforces the per-task timeout even if the child
+    # hangs producing no output (a plain readline loop would otherwise block).
+    if label:
+        _append_activity(f"\n── {label} ──")
+    proc = subprocess.Popen(
+        cmd, cwd=str(ROOT), shell=True,
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True, encoding="utf-8", errors="replace", bufsize=1,
+    )
+    timer = threading.Timer(timeout, proc.kill)
+    timer.start()
+    chunks = []
     try:
-        r = run(cmd, shell=True, input_text=prompt,
-                timeout=budget.get("max_seconds_per_task", 1800))
-        stdout = r.stdout or ""
-        out = stdout + (r.stderr or "")
-    except subprocess.TimeoutExpired:
-        out = "[loop] claude timed out."
-    logfile.write_text(out, encoding="utf-8")
+        if proc.stdin:
+            try:
+                proc.stdin.write(prompt)
+                proc.stdin.close()
+            except (BrokenPipeError, OSError):
+                pass
+        with logfile.open("w", encoding="utf-8") as lf:
+            for line in proc.stdout:
+                chunks.append(line)
+                lf.write(line)
+                lf.flush()
+                emit_activity(line)
+        proc.wait()
+    finally:
+        timer.cancel()
+    stdout = "".join(chunks)
+    if not stdout:
+        stdout = "[loop] claude produced no output (killed or timed out)."
+        logfile.write_text(stdout, encoding="utf-8")
     return parse_cost(stdout)
 
 
@@ -273,6 +302,68 @@ def parse_cost(stdout):
         if ev.get("type") == "result" and "total_cost_usd" in ev:
             cost = ev["total_cost_usd"]
     return cost
+
+
+# ---------------------------------------------------------------- activity feed
+def _append_activity(text):
+    try:
+        with ACTIVITY.open("a", encoding="utf-8") as f:
+            f.write(text + "\n")
+    except OSError:
+        pass
+
+
+def emit_activity(line):
+    """Decode one stream-json line and append readable feed lines to activity.log."""
+    line = line.strip()
+    if not line.startswith("{"):
+        return
+    try:
+        ev = json.loads(line)
+    except json.JSONDecodeError:
+        return
+    stamp = time.strftime("%H:%M:%S")
+    for msg in _activity_line(ev):
+        _append_activity(f"{stamp} {msg}")
+
+
+def _tool_summary(name, inp):
+    """One-line summary of a tool_use input (command / path / pattern)."""
+    if not isinstance(inp, dict):
+        return name
+    for key in ("command", "file_path", "pattern", "path", "url"):
+        if key in inp:
+            val = " ".join(str(inp[key]).split())
+            return f"{name}: {val[:100]}"
+    return name
+
+
+def _activity_line(ev):
+    """Pure: map a stream-json event to zero or more human-readable feed lines."""
+    t = ev.get("type")
+    if t == "system" and ev.get("subtype") == "init":
+        return [f"▶ session start · model={ev.get('model', '?')}"]
+    if t == "rate_limit_event":
+        info = ev.get("rate_limit_info", {})
+        if info.get("status") == "rejected":
+            return [f"⏳ RATE LIMITED ({info.get('rateLimitType', '?')})"]
+        return []
+    if t == "assistant":
+        out = []
+        for block in ev.get("message", {}).get("content", []):
+            bt = block.get("type")
+            if bt == "text":
+                txt = " ".join(block.get("text", "").split())
+                if txt:
+                    out.append("💬 " + txt[:140])
+            elif bt == "tool_use":
+                out.append("🔧 " + _tool_summary(block.get("name", "?"), block.get("input", {})))
+        return out
+    if t == "result":
+        mark = "✖" if ev.get("is_error") else "■"
+        cost = ev.get("total_cost_usd", 0) or 0
+        return [f"{mark} result: {ev.get('subtype', '?')} · turns={ev.get('num_turns', '?')} · ${cost:.4f}"]
+    return []
 
 
 # ---------------------------------------------------------------- report
@@ -415,7 +506,8 @@ def process_task(task, cfg, adapter, state, backlog_rel):
         print(f"[loop] task {task.id} '{task.title}' attempt {attempt}/{max_retries} [{model}]")
 
         prompt = build_prompt(task, gate, prior)
-        cost = run_claude(prompt, cfg, logfile, model=model)
+        label = f"{task.id} attempt {attempt}/{max_retries}: {task.title[:60]}"
+        cost = run_claude(prompt, cfg, logfile, model=model, label=label)
         state["cost_usd"] = state.get("cost_usd", 0.0) + cost
 
         cur_diff = git("diff", before)          # what the model changed this attempt
@@ -527,6 +619,7 @@ def main():
         state["pid"] = os.getpid()
         ensure_branch(state["branch"])
         save_state(state)
+        _append_activity(f"\n═══ loop {state['branch']} · started {time.strftime('%H:%M:%S')} ═══")
 
         max_iter = cfg.get("budget", {}).get("max_iterations", 50)
         max_consec = cfg.get("budget", {}).get("max_consecutive_failures", 3)
