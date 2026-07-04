@@ -124,18 +124,26 @@ def is_git_repo():
     return run(["git", "rev-parse", "--is-inside-work-tree"]).returncode == 0
 
 
+def _porcelain_paths(porcelain_text):
+    """Yield the path from each `git status --porcelain` line. Porcelain encodes
+    status in columns 0-1 and the path from column 3, so this MUST run on RAW
+    output -- stripping the leading space of a " M file" line (as the git() helper
+    does) shifts the offset and misparses the name. Pure, so the offset logic is
+    unit-testable without a repo."""
+    for line in (porcelain_text or "").splitlines():
+        if not line.strip():
+            continue
+        yield line[3:].strip().strip('"')
+
+
 def working_dirty(exclude):
     """True if any tracked/untracked path (outside `exclude`) is dirty.
-    .loop/ is gitignored so it never appears here."""
-    out = git("status", "--porcelain")
-    if not out:
-        return False
-    for line in out.splitlines():
-        path = line[3:].strip().strip('"')
-        if path in exclude:
-            continue
-        return True
-    return False
+    .loop/ is gitignored so it never appears here. Reads RAW stdout (not the
+    stripped git() helper) so porcelain's leading status columns stay intact --
+    otherwise a modified-but-excluded backlog (" M BACKLOG.md") misparses and the
+    preflight falsely reports the tree dirty."""
+    out = run(["git", "status", "--porcelain"]).stdout
+    return any(p not in exclude for p in _porcelain_paths(out))
 
 
 def discard_inflight(before, backlog):
