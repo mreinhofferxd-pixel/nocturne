@@ -13,8 +13,9 @@ v1 scope: markdown adapter, attached run, single-instance lock, resumable state,
 dedicated loop branch, no push/PR. Simple caps: max_iterations,
 max_consecutive_failures, max_retries.
 
-Run:   python .loop/orchestrator.py
-Stop:  create .loop/STOP  (honored at the next task boundary)
+Run:    python .loop/orchestrator.py
+Stop:   python .loop/orchestrator.py stop    (drops .loop/STOP; halts at boundary)
+Status: python .loop/orchestrator.py status  (prints .loop/report.md)
 """
 import json
 import os
@@ -306,6 +307,30 @@ def process_task(task, cfg, adapter, state, backlog_rel):
     return False, None, (prior or "gate never passed")[:500]
 
 
+# ---------------------------------------------------------------- subcommands
+def cmd_stop(loop=LOOP):
+    """Drop the STOP sentinel so a running loop halts at the next task boundary.
+
+    No signal handling / PID-hunting: a running orchestrator checks for this file
+    every iteration and exits cleanly (see the main loop). Returns an exit code."""
+    if not loop.exists():
+        print(f"[loop] no .loop/ at {loop.parent}. nothing to stop.")
+        return 1
+    stop = loop / "STOP"
+    stop.write_text("", encoding="utf-8")
+    print(f"[loop] wrote {stop}. loop will halt at the next task boundary.")
+    return 0
+
+
+def cmd_status(report=REPORT):
+    """Print the live report, or a notice if no run has produced one yet."""
+    if report.exists():
+        print(report.read_text(encoding="utf-8"), end="")
+        return 0
+    print(f"[loop] no run yet (no {report}).")
+    return 0
+
+
 def main():
     if not LOOP.exists():
         print(f"[loop] no .loop/ at {ROOT}. run the loop-creator skill first.")
@@ -410,4 +435,13 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    _cmd = sys.argv[1] if len(sys.argv) > 1 else "run"
+    if _cmd == "stop":
+        sys.exit(cmd_stop())
+    elif _cmd == "status":
+        sys.exit(cmd_status())
+    elif _cmd == "run":
+        main()
+    else:
+        print(f"[loop] unknown command: {_cmd!r}. use: run | stop | status")
+        sys.exit(2)
