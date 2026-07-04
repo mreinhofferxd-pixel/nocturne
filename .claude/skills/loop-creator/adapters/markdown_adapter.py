@@ -15,6 +15,8 @@ from dataclasses import dataclass
 _CHECKBOX = re.compile(r'^(?P<indent>\s*)-\s+\[(?P<mark>[ xX])\]\s+(?P<body>.*)$')
 _COMMENT = re.compile(r'<!--.*?-->')
 _ACCEPTANCE = re.compile(r"@acceptance\(([^)]*)\)")
+# A level-2 heading (exactly `## `) opens a unit. `#` (title) and `### ` do not.
+_HEADING = re.compile(r'^##\s+(?P<title>.*)$')
 
 
 def parse_acceptance(title):
@@ -32,6 +34,32 @@ def parse_acceptance(title):
     return clean, m.group(1).strip()
 
 
+def parse_units(lines):
+    """Group checkbox tasks by their most-recent preceding `## heading`.
+
+    Pure. Returns (unit_title, [task_index, ...]) tuples in document order,
+    including only units that contain at least one checkbox. Tasks appearing
+    before any `## heading` belong to a default unit named "". task_index is
+    the 0-based checkbox index (matches Task.index)."""
+    groups = []          # list of [title, [indices]]
+    current = None       # the open group, or None before the first task/heading
+    idx = 0
+    for line in lines:
+        raw = line.rstrip("\n")
+        h = _HEADING.match(raw)
+        if h:
+            current = [h.group("title").strip(), []]
+            groups.append(current)
+            continue
+        if _CHECKBOX.match(raw):
+            if current is None:
+                current = ["", []]
+                groups.append(current)
+            current[1].append(idx)
+            idx += 1
+    return [(title, indices) for title, indices in groups if indices]
+
+
 @dataclass
 class Task:
     index: int          # 0-based position among all checkbox items (stable id)
@@ -39,6 +67,7 @@ class Task:
     done: bool
     raw: str
     acceptance: str | None = None
+    unit: str = ""
 
     @property
     def id(self) -> str:
@@ -58,15 +87,21 @@ class MarkdownBacklog:
         lines = self._read()
         items = []
         idx = 0
+        unit = ""
         for lineno, line in enumerate(lines):
-            m = _CHECKBOX.match(line.rstrip("\n"))
+            raw = line.rstrip("\n")
+            h = _HEADING.match(raw)
+            if h:
+                unit = h.group("title").strip()
+                continue
+            m = _CHECKBOX.match(raw)
             if not m:
                 continue
             body = m.group("body")
             done = m.group("mark").lower() == "x"
             title = _COMMENT.sub("", body).strip()
             title, acceptance = parse_acceptance(title)
-            task = Task(idx, title, done, line.rstrip("\n"), acceptance)
+            task = Task(idx, title, done, raw, acceptance, unit)
             items.append((lineno, task))
             idx += 1
         return lines, items
@@ -74,6 +109,10 @@ class MarkdownBacklog:
     def list(self):
         _, items = self._items()
         return [t for _, t in items]
+
+    def units(self):
+        """(unit_title, [task_index, ...]) tuples in document order."""
+        return parse_units(self._read())
 
     def next_task(self):
         """First todo task. Blocked-skipping is the harness's job (state.json)."""
