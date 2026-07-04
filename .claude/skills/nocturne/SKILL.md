@@ -63,12 +63,18 @@ scope-drift flags, detach, budget-dollar nuance, github/gitlab adapters.
   reads checkboxes, never the spec. The result is one `BACKLOG.md` the adapter drives.
 
 ### 3. Recon (light)
-Detect the stack, package manager, and test/lint/typecheck tooling. Record a short
-summary. This feeds the gate. (Full recon.json is a later increment.)
+Detect the stack, package manager, and test/lint/typecheck tooling. Read
+`CLAUDE.md` / `AGENTS.md` / `CONTRIBUTING.md` for an explicit quality bar — a
+stated "Done = <cmd>" outranks every derived gate (gate-derivation precedence 1).
+Record a short summary. This feeds the gate. (Full recon.json is a later
+increment.)
 
 ### 4. Gate synthesis
-Follow `reference/gate-derivation.md`: CI config -> package scripts -> language
-default. Produce an ordered command list. Prefer fast, deterministic commands.
+Follow `reference/gate-derivation.md`: explicit done-statement (CLAUDE.md /
+AGENTS.md) -> CI config -> package scripts -> language default. Produce an
+ordered command list. Prefer fast, deterministic commands. Run the gate once —
+the baseline must be green before launch (the harness re-checks this at start
+via `require_green_baseline`).
 
 ### 5. Write the loop into the target repo
 Create `.loop/` and drop in the harness:
