@@ -322,6 +322,83 @@ def no_progress(prev_diff, cur_diff):
     return prev_diff is not None and prev_diff == cur_diff
 
 
+# ---------------------------------------------------------------- diff-guard (anti-gaming)
+# Spec 8.5: "green" alone is never enough. The cheapest way to pass a gate is to
+# weaken it -- add a skip/ignore/disable marker, or delete an assertion -- instead
+# of solving the task. is_suppressing_diff classifies an attempt's diff; the
+# harness rejects an otherwise-green attempt whose diff suppresses coverage,
+# unless the task opts in with a [modifies-tests]/[refactor-tests] tag (guard
+# relaxed for that task only).
+
+# Tokens that, when ADDED, silence a check rather than satisfy it.
+_SUPPRESSION_MARKER = re.compile(
+    r"""
+      \#\s*type:\s*ignore          # python: mypy blanket ignore
+    | \#\s*noqa                    # python: flake8/ruff line suppression
+    | @ts-ignore | @ts-nocheck     # typescript: silence line / whole file
+    | eslint-disable               # js: disable rule(s) (incl. -next-line/-line)
+    | \bxfail\b                    # pytest: expected-fail marker
+    | \bxit\b | \bxdescribe\b      # jasmine/jest/mocha: pending spec
+    | mark\.skip                   # pytest: @pytest.mark.skip[if]
+    | \.skip\s*[\(\.]              # jest/mocha/pytest: it.skip( / describe.skip.
+    | \bskip\s*\(                  # pytest.skip( / unittest skip(
+    | \bskip(?:if|unless)?\b       # bare skip / skipif / skipunless marker
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
+# Lines that ASSERT something. A net removal shrinks what the suite checks.
+_ASSERTION = re.compile(
+    r"""
+      \bassert\b                   # python assert / node assert(
+    | \bexpect\s*\(                # jest/chai expect(
+    | self\.assert\w*\s*\(         # unittest assertEqual/assertTrue/...
+    | \.should\b                   # chai should
+    | pytest\.raises               # pytest context-manager assertion
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
+_TESTS_TAG = re.compile(r"\[(?:modifies-tests|refactor-tests)\]", re.IGNORECASE)
+
+
+def _hunk_lines(diff_text, sign):
+    """Yield the content of added (`+`) or removed (`-`) hunk lines, skipping the
+    `+++`/`---` file headers so a filename never counts as a code change."""
+    header = sign * 3
+    for line in (diff_text or "").splitlines():
+        if line.startswith(sign) and not line.startswith(header):
+            yield line[1:]
+
+
+def _count(pattern, lines):
+    return sum(1 for ln in lines if pattern.search(ln))
+
+
+def modifies_tests(title):
+    """True when a task opts into test modification via a [modifies-tests] /
+    [refactor-tests] tag, relaxing the 8.5 diff-guard for that task only."""
+    return bool(_TESTS_TAG.search(title or ""))
+
+
+def is_suppressing_diff(diff_text):
+    """Classify a unified diff as coverage-suppressing (spec 8.5). Pure text
+    classifier over the `+`/`-` hunk lines only (never the `+++`/`---` headers).
+
+    True when the diff nets a suppression marker (skip/xfail/@ts-ignore/
+    # type: ignore/# noqa/eslint-disable) or nets a removed assertion. Uses net
+    counts so an in-place edit (a marker/assertion present on both sides, or an
+    assertion whose expected value merely changed) is not flagged -- only a real
+    silencing or deletion is."""
+    added = list(_hunk_lines(diff_text, "+"))
+    removed = list(_hunk_lines(diff_text, "-"))
+    if _count(_SUPPRESSION_MARKER, added) > _count(_SUPPRESSION_MARKER, removed):
+        return True
+    if _count(_ASSERTION, removed) > _count(_ASSERTION, added):
+        return True
+    return False
+
+
 # ---------------------------------------------------------------- main loop
 def process_task(task, cfg, adapter, state, backlog_rel):
     """Run one task through up to max_retries attempts. Returns (done, sha, reason)."""
@@ -347,12 +424,23 @@ def process_task(task, cfg, adapter, state, backlog_rel):
 
         if new_commit and not dirty:
             ok, gate_out = run_gate(gate)
-            if ok:
+            if ok and is_suppressing_diff(cur_diff) and not modifies_tests(task.title):
+                # Green but gamed: the diff weakens the gate (spec 8.5). Reject the
+                # attempt, discard it, and make the model solve the task honestly.
+                prior = (
+                    "Rejected: the gate passed but your diff weakens it -- it adds a "
+                    "skip/xfail/@ts-ignore/# type: ignore/# noqa/eslint-disable marker "
+                    "or removes an assertion. Solve the task without suppressing checks. "
+                    "If this task legitimately edits tests, its title must be tagged "
+                    "[modifies-tests]."
+                )
+            elif ok:
                 adapter.mark_done(task)                 # check the box in BACKLOG.md
                 git("add", backlog_rel)
                 git("commit", "--amend", "--no-edit")   # fold checkbox into the task commit
                 return True, head_sha(), None
-            prior = gate_out
+            else:
+                prior = gate_out
         elif not new_commit:
             prior = "No commit was produced. You must commit your work."
         else:  # committed but left the tree dirty
