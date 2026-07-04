@@ -381,7 +381,9 @@ def parse_cost(events):
     cost = 0.0
     for ev in events:
         if ev.get("type") == "result" and "total_cost_usd" in ev:
-            cost = ev["total_cost_usd"]
+            # the field is present-but-null on some error results; a None here
+            # would poison state["cost_usd"] += cost with a TypeError mid-run
+            cost = ev["total_cost_usd"] or 0.0
     return cost
 
 
@@ -859,7 +861,10 @@ def wait_seconds(resets_at, now, buffer_s=RATE_LIMIT_BUFFER_S):
     in (never time.time()) so tests pin the arithmetic without sleeping. Returns
     max(0, resets_at - now) + buffer; a missing or already-past resetsAt yields just
     the buffer (a short courtesy wait, never negative)."""
-    base = 0 if resets_at is None else max(0, int(resets_at) - int(now))
+    try:
+        base = 0 if resets_at is None else max(0, int(resets_at) - int(now))
+    except (TypeError, ValueError):
+        base = 0   # garbage resetsAt degrades to the courtesy buffer, never a crash
     return base + buffer_s
 
 
