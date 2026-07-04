@@ -208,9 +208,20 @@ def load_state():
     return None
 
 
+def _atomic_write_text(path, text):
+    """Write `text` to `path` via a same-directory temp file + os.replace, so a
+    crash mid-write can never leave a half-written file. A torn state.json would
+    make load_state raise on resume AND lose the branch pin -- the next run would
+    mint a fresh loop branch, abandoning the old branch's commits. os.replace is
+    atomic on both POSIX and Windows when source and target share a directory."""
+    tmp = Path(str(path) + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
+
+
 def save_state(state):
     state["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
-    STATE.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    _atomic_write_text(STATE, json.dumps(state, indent=2))
 
 
 # ---------------------------------------------------------------- branch
