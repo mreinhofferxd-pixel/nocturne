@@ -441,6 +441,28 @@ def pick_task(adapter, state):
     return None
 
 
+# ---------------------------------------------------------------- checkpoint modes
+# Spec section 9: `mode` controls whether the loop pauses at task boundaries instead
+# of working the whole backlog unattended. "auto" (default) never pauses;
+# "checkpoint-task" pauses after every completed task; "checkpoint-unit" pauses only
+# at a unit boundary -- the next task belongs to a different ## heading group (8.3). A
+# pause is checked ONLY after a DONE task (never a blocked one), so the halt is clean +
+# resumable: the next run picks up at the next todo. Pure decision, unit-testable.
+def should_checkpoint(mode, current_task, next_task):
+    """True when the loop should pause after `current_task` completes (spec section 9).
+    False for mode "auto" or when there is no next task (nothing left to pause
+    before). "checkpoint-task" always pauses; "checkpoint-unit" pauses only when the
+    next task's unit differs from the current task's (a 8.3 unit boundary). An
+    unknown mode never pauses (degrades to auto). Pure."""
+    if mode == "auto" or next_task is None:
+        return False
+    if mode == "checkpoint-task":
+        return True
+    if mode == "checkpoint-unit":
+        return getattr(next_task, "unit", "") != getattr(current_task, "unit", "")
+    return False
+
+
 # ---------------------------------------------------------------- stuck check
 def no_progress(prev_diff, cur_diff):
     """True when an attempt reproduced the previous attempt's diff verbatim.
@@ -1180,6 +1202,18 @@ def main():
             state["iterations"] += 1
             save_state(state)
             write_report(state, adapter.list())
+
+            # section 9 checkpoint modes: after a DONE task (never a blocked one), the
+            # state is saved + the report written, so pausing here is clean + resumable
+            # -- the next run picks up at the next todo. Only pause when there IS a next
+            # task and `mode` calls for a boundary here (see should_checkpoint).
+            if done:
+                mode = cfg.get("mode", "auto")
+                nxt = pick_task(adapter, state)
+                if should_checkpoint(mode, task, nxt):
+                    halt = (f"checkpoint ({mode}): task {task.id} done -- resume with "
+                            f"'python .loop/orchestrator.py' to continue")
+                    break
 
         save_state(state)
         write_report(state, adapter.list(), halt=halt)
