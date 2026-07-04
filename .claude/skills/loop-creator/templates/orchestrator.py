@@ -528,6 +528,45 @@ def is_suppressing_diff(diff_text):
     return False
 
 
+# ---------------------------------------------------------------- acceptance enforcement
+# Spec §8.6: a task may carry an @acceptance(<criterion>) marker (parsed upstream into
+# task.acceptance). "Green" is not enough -- the model could satisfy the gate without
+# ever pinning the criterion in a test. acceptance_tokens mines a criterion for the
+# test identifiers it names (test_* function/node ids, .py file paths); acceptance_in_diff
+# then checks the attempt's diff for at least one of them on an ADDED line. A criterion
+# naming no such tokens is advisory-only (no enforceable handle), so it never blocks.
+# Both transforms are pure over the criterion + diff text, so the logic is unit-testable.
+_ACCEPTANCE_TEST_FN = re.compile(r"test_\w+")
+_ACCEPTANCE_PY_PATH = re.compile(r"[\w./\\-]+\.py\b")
+
+
+def acceptance_tokens(criterion):
+    """Extract test-identifying tokens from an acceptance-criterion string (spec §8.6):
+    pytest function names / node ids matching a `test_` name, and file paths ending
+    `.py`. Pure; returns a de-duplicated list preserving first appearance (paths first,
+    then test names). An empty/None criterion or one naming no such token yields []."""
+    text = criterion or ""
+    tokens = []
+    for pattern in (_ACCEPTANCE_PY_PATH, _ACCEPTANCE_TEST_FN):
+        for m in pattern.finditer(text):
+            tok = m.group(0)
+            if tok not in tokens:
+                tokens.append(tok)
+    return tokens
+
+
+def acceptance_in_diff(diff_text, criterion):
+    """True when at least one acceptance_tokens(criterion) token appears on an ADDED
+    line of the diff (spec §8.6). Pure text check over the `+` hunk lines only (never
+    the `+++` header, `-` removals, or context). A criterion with no extractable tokens
+    returns False -- callers treat that no-token case as advisory (see process_task)."""
+    tokens = acceptance_tokens(criterion)
+    if not tokens:
+        return False
+    added = "\n".join(_hunk_lines(diff_text, "+"))
+    return any(tok in added for tok in tokens)
+
+
 # ---------------------------------------------------------------- oversize guard (scope drift)
 # Spec §8.7: scoping is owned up front, but the harness already holds the diff and
 # retry count, so for zero extra tokens it can catch drift. When a task is about to
@@ -891,6 +930,21 @@ def process_task(task, cfg, adapter, state, backlog_rel):
                     "or removes an assertion. Solve the task without suppressing checks. "
                     "If this task legitimately edits tests, its title must be tagged "
                     "[modifies-tests]."
+                )
+            elif (
+                ok
+                and getattr(task, "acceptance", None)
+                and acceptance_tokens(task.acceptance)
+                and not acceptance_in_diff(cur_diff, task.acceptance)
+            ):
+                # Green but the acceptance test is missing (spec §8.6): the gate
+                # passed yet the diff adds no test pinning the criterion. Reject the
+                # attempt so the model adds the test that would fail on regression.
+                prior = (
+                    "Rejected: the gate passed but your diff adds no test pinning the "
+                    "acceptance criterion. Add a test that exercises and pins this "
+                    "criterion so a future regression would fail the gate: "
+                    f"{task.acceptance}"
                 )
             elif ok:
                 # Green. §16: if we recovered from a prior gate failure, mine it
