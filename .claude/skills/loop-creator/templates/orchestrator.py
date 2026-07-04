@@ -515,6 +515,48 @@ def is_suppressing_diff(diff_text):
     return False
 
 
+# ---------------------------------------------------------------- oversize guard (scope drift)
+# Spec §8.7: scoping is owned up front, but the harness already holds the diff and
+# retry count, so for zero extra tokens it can catch drift. When a task is about to
+# be blocked (retries exhausted or no-progress), if its last attempt's diff spans
+# more distinct files than the threshold, the block reason becomes the actionable
+# "likely too large — split needed" instead of a bare gate/stuck message.
+DEFAULT_OVERSIZE_FILE_THRESHOLD = 25
+
+
+def _changed_files(diff_text):
+    """Distinct file paths touched by a unified diff. Reads the file HEADERS only
+    -- the `diff --git a/… b/…` line (one per file), falling back to a `+++ b/…`
+    header -- and NEVER the `+`/`-` content lines, so a `+added line` of code is
+    never miscounted as a new file. A set dedups the two header sources."""
+    files = set()
+    for line in (diff_text or "").splitlines():
+        if line.startswith("diff --git "):
+            path = line.split()[-1]
+            files.add(path[2:] if path.startswith("b/") else path)
+        elif line.startswith("+++ "):
+            path = line[4:].strip()
+            if path != "/dev/null":
+                files.add(path[2:] if path.startswith("b/") else path)
+    return files
+
+
+def is_oversize_diff(diff_text, threshold):
+    """True when a unified diff touches MORE distinct files than `threshold`
+    (spec §8.7 mechanical oversize guard). Pure: counts file headers, never the
+    `+`/`-` content lines. At-or-under the threshold is not oversize."""
+    return len(_changed_files(diff_text)) > threshold
+
+
+def _oversize_reason(base_reason, diff_text, threshold):
+    """Sharpen a block reason (spec §8.7): when the last attempt's diff exceeds the
+    file-count threshold the task is likely mis-scoped, so return the actionable
+    "split needed" message instead of the bare gate/stuck reason."""
+    if is_oversize_diff(diff_text, threshold):
+        return "likely too large — split needed"
+    return base_reason
+
+
 # ---------------------------------------------------------------- rate-limit backoff
 # Spec §9: a rate-limit rejection is NOT a task failure. When Claude's usage/rate
 # limit rejects an attempt the request never ran -- counting it as a gate failure
@@ -618,6 +660,8 @@ def process_task(task, cfg, adapter, state, backlog_rel):
     before = head_sha()
     prior = None
     prev_diff = None
+    cur_diff = None
+    oversize_threshold = cfg.get("oversize_file_threshold", DEFAULT_OVERSIZE_FILE_THRESHOLD)
     model = pick_model(task, cfg)
 
     for attempt in range(1, max_retries + 1):
@@ -673,10 +717,12 @@ def process_task(task, cfg, adapter, state, backlog_rel):
         prev_diff = cur_diff
         discard_inflight(before, backlog_rel)
         if stuck:
-            return False, None, "no progress across retries (identical diff) — likely stuck"
+            reason = "no progress across retries (identical diff) — likely stuck"
+            return False, None, _oversize_reason(reason, cur_diff, oversize_threshold)
         model = escalate(model, cfg)   # next retry climbs one tier (spec §8.4)
 
-    return False, None, (prior or "gate never passed")[:500]
+    reason = (prior or "gate never passed")[:500]
+    return False, None, _oversize_reason(reason, cur_diff, oversize_threshold)
 
 
 # ---------------------------------------------------------------- subcommands

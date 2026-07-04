@@ -118,6 +118,7 @@ Blocked tasks carry a reason. No push/PR in v1 — the user reviews the branch.
   "effort": "xhigh",                        // claude --effort: low|medium|high|xhigh|max (omit to skip)
   "on_rate_limit": "pause-resume",          // §9: pause-resume (sleep to reset, re-run same attempt) | halt (stop w/ resume msg)
   "max_rate_limit_wait_s": 21600,           // cap on a single pause (6h); a longer reset halts instead of sleeping
+  "oversize_file_threshold": 25,            // §8.7: a blocked task whose last diff touches more files than this is flagged "too large — split needed"
   "budget": {
     "max_iterations": 50,
     "max_consecutive_failures": 3,
