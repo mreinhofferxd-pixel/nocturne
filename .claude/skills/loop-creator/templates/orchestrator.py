@@ -37,6 +37,16 @@ from markdown_adapter import MarkdownBacklog  # noqa: E402
 
 IS_WIN = os.name == "nt"
 
+# Harden our OWN stdout/stderr, not just subprocess decoding (see run()). Windows
+# consoles default to a non-UTF-8 code page (cp1252) that raises UnicodeEncodeError
+# on characters common in backlog task titles and gate output (arrows, em-dashes,
+# section signs). errors="replace" keeps a stray glyph from ever killing the loop.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
+
 
 # ---------------------------------------------------------------- shell / git
 def run(cmd, shell=False, input_text=None, timeout=None):
