@@ -806,6 +806,21 @@ def _learned_flag(path=LEARNED):
     return ""
 
 
+# ---------------------------------------------------------------- budget cap
+# Spec §9: a hard dollar ceiling on cumulative best-effort cost. Opt-in -- a None /
+# 0 / negative `budget.max_cost_usd` means no cap. Checked ONLY at the task boundary
+# (before pick_task), never mid-task, so a running attempt always finishes atomically
+# (the atomicity invariant): clean worktree <=> between tasks. Pure so the threshold
+# logic is unit-testable without a run.
+def over_budget(cost_usd, cap):
+    """True when a positive dollar cap is set and cumulative spend has reached it
+    (spec §9). A None / 0 / negative cap means "no cap" -> always False, so the
+    guard is opt-in. Pure."""
+    if cap is None or cap <= 0:
+        return False
+    return cost_usd >= cap
+
+
 # ---------------------------------------------------------------- main loop
 def process_task(task, cfg, adapter, state, backlog_rel):
     """Run one task through up to max_retries attempts. Returns (done, sha, reason)."""
@@ -960,6 +975,7 @@ def main():
 
         max_iter = cfg.get("budget", {}).get("max_iterations", 50)
         max_consec = cfg.get("budget", {}).get("max_consecutive_failures", 3)
+        cap = cfg.get("budget", {}).get("max_cost_usd")
 
         while True:
             if STOP.exists():
@@ -971,6 +987,9 @@ def main():
                 break
             if state["consecutive_failures"] >= max_consec:
                 halt = "max_consecutive_failures reached"
+                break
+            if over_budget(state["cost_usd"], cap):
+                halt = f"budget cap reached (${state['cost_usd']:.4f} / ${cap:.2f})"
                 break
 
             task = pick_task(adapter, state)
