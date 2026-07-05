@@ -127,6 +127,24 @@ task, commits on green, checkpoints state every iteration.
   mid-write). PowerShell: `New-Item .loop/STOP`.
 - **Resume:** re-run `python .loop/orchestrator.py`; it reads `.loop/state.json`
   and continues on the same branch.
+- **Watch (global, cross-run):** every run also heartbeats per-run json under
+  `~/.nocturne/runs/` and appends boundary events (TASK_DONE, TASK_BLOCKED,
+  PAUSED, HALT, RUN_DONE) to `~/.nocturne/events.log` (`NOCTURNE_HOME` env
+  overrides the root). On **`/nocturne watch`** -- or whenever a run is launched
+  that this session is not already tailing -- arm a Monitor on the feed so
+  boundary events land in chat as they happen. Start at end-of-file so old
+  events don't replay:
+  ```
+  tail -n 0 -f ~/.nocturne/events.log
+  ```
+  Pull views from the same registry (read side: `templates/nocturne_status.py`,
+  stdlib-only, works outside any repo):
+  - `python <skill>/templates/nocturne_status.py --line` -- one statusline line;
+    point the Claude Code `statusLine` setting at it (add `"refreshInterval"`
+    so it repolls between events).
+  - `... --watch [seconds]` -- live aligned table of all runs; no args = once.
+  - Staleness is age-based only (no heartbeat for 900s => `stale`) -- a crashed
+    loop surfaces instead of reporting `running` forever.
 
 ### 8. Handoff
 Summarize from `.loop/report.md`: done/blocked counts, commits, branch, halt reason.
