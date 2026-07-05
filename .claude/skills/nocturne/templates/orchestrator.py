@@ -1061,6 +1061,20 @@ def over_wallclock(started_epoch, now_epoch, max_minutes):
     return now_epoch - started_epoch >= max_minutes * 60
 
 
+# ---------------------------------------------------------------- resume reset
+def resumed_failure_count(consecutive_failures, max_consecutive_failures):
+    """Reset the consecutive-failure window on resume (v1 wart fix). A run that
+    halted at `max_consecutive_failures` persists that count in state.json, so a
+    human deliberately relaunching would re-trip the halt check immediately. On
+    resume: when a positive cap is set AND the persisted count has reached it,
+    hand back a fresh window (0); otherwise return the count unchanged (a None /
+    0 / negative cap disables the reset). Pure, so the decision is unit-testable."""
+    cap = max_consecutive_failures
+    if cap is not None and cap > 0 and consecutive_failures >= cap:
+        return 0
+    return consecutive_failures
+
+
 # ---------------------------------------------------------------- main loop
 def process_task(task, cfg, adapter, state, backlog_rel):
     """Run one task through up to max_retries attempts. Returns (done, sha, reason)."""
@@ -1237,6 +1251,14 @@ def main():
                 "started_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
                 "started_epoch": time.time(),
             }
+        else:
+            # Resume: a human deliberately relaunching after a
+            # max_consecutive_failures halt gets a fresh failure window -- the
+            # persisted counter would otherwise re-trip the halt check at once.
+            state["consecutive_failures"] = resumed_failure_count(
+                state["consecutive_failures"],
+                cfg.get("budget", {}).get("max_consecutive_failures", 3),
+            )
         state["pid"] = os.getpid()
         ensure_branch(state["branch"])
         # Seed an uncommitted backlog as its own commit (dogfood #6): otherwise
