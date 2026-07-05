@@ -1383,6 +1383,64 @@ def cmd_unblock(task_id=None):
     return 0
 
 
+# ---------------------------------------------------------------- detach (section 11)
+# Detached launch: same run, spawned as an OS-detached background process that
+# survives this shell/session. Observability comes from the global registry +
+# events feed (statusline, nocturne_status.py --watch, a Monitor on events.log);
+# the console feed mirrors to .loop/detached.log for post-hoc reads.
+DETACHED_PROCESS = 0x00000008
+CREATE_NEW_PROCESS_GROUP = 0x00000200
+
+
+def _detach_kwargs(is_windows):
+    """Popen kwargs that fully detach the child from this console/session so it
+    keeps running after the parent exits. Pure (platform passed in)."""
+    if is_windows:
+        return {"creationflags": DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP}
+    return {"start_new_session": True}
+
+
+def detach_notice(pid, log_path):
+    """Handoff message for a freshly detached run: pid, mirror log, the watch
+    surfaces, and how to stop it. Pure."""
+    return (
+        f"[loop] detached run started (pid {pid}).\n"
+        f"[loop] console feed mirrors to {log_path}\n"
+        "[loop] watch: templates/nocturne_status.py --line/--watch (registry), "
+        "or tail ~/.nocturne/events.log for boundary events.\n"
+        "[loop] stop: python .loop/orchestrator.py stop (next task boundary)"
+    )
+
+
+def cmd_detach():
+    """Spawn the loop detached and return immediately. A child that dies within
+    the probe window (lock held, bad config, red baseline) is reported here with
+    the tail of its log instead of failing silently in the background."""
+    if not CONFIG.exists():
+        print(f"[loop] missing {CONFIG}. run the nocturne skill first.")
+        return 1
+    log_path = LOOP / "detached.log"
+    with open(log_path, "ab") as log:
+        proc = subprocess.Popen(
+            [sys.executable, str(LOOP / "orchestrator.py")],
+            cwd=str(ROOT), stdin=subprocess.DEVNULL,
+            stdout=log, stderr=subprocess.STDOUT,
+            **_detach_kwargs(os.name == "nt"),
+        )
+    time.sleep(4.0)
+    if proc.poll() is not None:
+        print(f"[loop] detached run exited immediately (code {proc.returncode})."
+              f" tail of {log_path}:")
+        try:
+            tail = log_path.read_text(encoding="utf-8", errors="replace")
+            print("\n".join(tail.splitlines()[-5:]))
+        except OSError:
+            pass
+        return 1
+    print(detach_notice(proc.pid, str(log_path)))
+    return 0
+
+
 def main():
     if not LOOP.exists():
         print(f"[loop] no .loop/ at {ROOT}. run the nocturne skill first.")
@@ -1603,9 +1661,11 @@ if __name__ == "__main__":
         sys.exit(cmd_status())
     elif _cmd == "unblock":
         sys.exit(cmd_unblock(sys.argv[2] if len(sys.argv) > 2 else None))
+    elif _cmd == "detach":
+        sys.exit(cmd_detach())
     elif _cmd == "run":
         main()
     else:
         print(f"[loop] unknown command: {_cmd!r}. "
-              "use: run | stop | status | unblock [task-id]")
+              "use: run | detach | stop | status | unblock [task-id]")
         sys.exit(2)

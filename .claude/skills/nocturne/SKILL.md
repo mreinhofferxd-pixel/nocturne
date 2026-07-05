@@ -145,6 +145,12 @@ task, commits on green, checkpoints state every iteration.
   - `... --watch [seconds]` -- live aligned table of all runs; no args = once.
   - Staleness is age-based only (no heartbeat for 900s => `stale`) -- a crashed
     loop surfaces instead of reporting `running` forever.
+- **Detach (section 11, background):** `python .loop/orchestrator.py detach`
+  spawns the same run as an OS-detached process that survives this session;
+  console output mirrors to `.loop/detached.log`. An immediate child death
+  (lock held, bad config, red baseline) is reported with the log tail instead
+  of failing silently. Watch via the global surfaces above; stop with
+  `python .loop/orchestrator.py stop`.
 
 ### 8. Handoff
 Summarize from `.loop/report.md`: done/blocked counts, commits, branch, halt reason.
