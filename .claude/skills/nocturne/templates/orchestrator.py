@@ -1204,6 +1204,36 @@ def cmd_status(report=REPORT):
     return 0
 
 
+def clear_blocked(results, task_id=None):
+    """Return a NEW dict of task results with blocked entries removed; the input
+    dict is never mutated. With task_id=None every entry whose status ==
+    "blocked" is dropped. With a task_id only that entry is dropped, and only
+    when it is blocked -- a done entry or an unknown id leaves the result equal
+    to the input. Pure, so the unblock logic is unit-testable without a
+    state.json."""
+    if task_id is None:
+        return {tid: r for tid, r in results.items() if r.get("status") != "blocked"}
+    entry = results.get(task_id)
+    if entry is not None and entry.get("status") == "blocked":
+        return {tid: r for tid, r in results.items() if tid != task_id}
+    return dict(results)
+
+
+def cmd_unblock(task_id=None):
+    """Clear blocked task entries from .loop/state.json so a later run retries
+    them (pick_task never reconsiders a blocked entry otherwise). All blocked
+    entries are cleared, or just `task_id` when given. Returns an exit code."""
+    state = load_state()
+    if state is None:
+        print(f"[loop] no state at {STATE}. nothing to unblock.")
+        return 1
+    results = state.get("results", {})
+    state["results"] = clear_blocked(results, task_id)
+    save_state(state)
+    print(f"[loop] cleared {len(results) - len(state['results'])} blocked entries.")
+    return 0
+
+
 def main():
     if not LOOP.exists():
         print(f"[loop] no .loop/ at {ROOT}. run the nocturne skill first.")
@@ -1407,8 +1437,11 @@ if __name__ == "__main__":
         sys.exit(cmd_stop())
     elif _cmd == "status":
         sys.exit(cmd_status())
+    elif _cmd == "unblock":
+        sys.exit(cmd_unblock(sys.argv[2] if len(sys.argv) > 2 else None))
     elif _cmd == "run":
         main()
     else:
-        print(f"[loop] unknown command: {_cmd!r}. use: run | stop | status")
+        print(f"[loop] unknown command: {_cmd!r}. "
+              "use: run | stop | status | unblock [task-id]")
         sys.exit(2)
