@@ -35,8 +35,7 @@ parse/enforce/route (§8.6) · scope-drift guards: oversize + forward-flags (§8
 rate-limit pause-resume (§9) · checkpoint modes (§9) · protected paths (§9) ·
 learned.md conventions (§16) · live activity feed.
 
-Still out: detach lifecycle (§11), dependency-aware PRs (§8.3 consumer),
-github/gitlab adapters (§17).
+Still out: dependency-aware PRs (§8.3 consumer), github/gitlab adapters (§17).
 
 ## Steps
 
@@ -210,7 +209,7 @@ Blocked tasks carry a reason. No push/PR in v1 — the user reviews the branch.
 
 - `--allowedTools` includes `Bash` broadly so the model can run the gate and commit.
   On a trusted repo this is the accepted risk (no denylist in v1).
-- Attached only: closing the session ends the loop. Detached/overnight is fast-follow.
+- `python .loop/orchestrator.py detach` runs the loop as an OS-detached background process that survives the session (details in step 7).
 - Default model `claude-opus-4-8` + `effort: xhigh` for maximum quality; the harness passes
   `--effort` when set. Drop to `claude-sonnet-5` + `medium` per run to conserve tokens on a budget.
 - Rate limits (§9): a 429 / usage-limit rejection is **not** a task failure — it never

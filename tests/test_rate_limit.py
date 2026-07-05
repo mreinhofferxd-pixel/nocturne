@@ -11,8 +11,8 @@ import pytest
 
 import orchestrator as o
 
-# The two signals the harness must recognize, verbatim from a real org five-hour
-# rejection (see loop-creator-v1-status memory).
+# The two signal shapes the harness must recognize, captured verbatim from a live
+# org five-hour rejection.
 REJECT_LINE = (
     '{"type":"rate_limit_event","rate_limit_info":'
     '{"status":"rejected","resetsAt":1000,"rateLimitType":"five_hour"}}'
