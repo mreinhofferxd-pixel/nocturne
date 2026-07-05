@@ -908,6 +908,81 @@ def _announce_rate_limit_pause(resets_at, wait, state, tasks):
     print(f"[loop] {msg}")
     _append_activity(f"⏳ {msg}")
     write_report(state, tasks, note=msg)
+    _registry_heartbeat(state, tasks, "paused")
+
+
+# ---------------------------------------------------------------- run registry
+# Global run registry (WRITE side): every run heartbeats a small json under
+# $NOCTURNE_HOME/runs/ (default ~/.nocturne/runs/) so concurrent loops across
+# repos are discoverable from outside their worktrees. Best-effort only -- a
+# registry write failure must never crash the loop.
+_RUN_ID_UNSAFE = re.compile(r"[^A-Za-z0-9_-]")
+
+
+def registry_dir(env=None):
+    """Registry root: $NOCTURNE_HOME or ~/.nocturne. The env override keeps
+    tests hermetic -- they point NOCTURNE_HOME at a tmp dir, never real home."""
+    return Path((env or os.environ).get("NOCTURNE_HOME") or (Path.home() / ".nocturne"))
+
+
+def run_id(root_name, branch):
+    """Registry id for a run: '<repo-dir>-<branch-tail>' with every char outside
+    [A-Za-z0-9_-] replaced by a dash. Pure. Only the part after the branch's
+    last '/' is kept (loop/20260101-1200 -> 20260101-1200)."""
+    tail = (branch or "").rsplit("/", 1)[-1]
+    return _RUN_ID_UNSAFE.sub("-", f"{root_name}-{tail}")
+
+
+def heartbeat_record(run_id, root, branch, pid, status, task_id, task_title,
+                     attempt, model, cost_usd, done, blocked, todo, now):
+    """Pure heartbeat payload. task_id/task_title/attempt/model may be None
+    between tasks; task_title is truncated so a huge title can't bloat the file."""
+    return {
+        "run_id": run_id,
+        "root": root,
+        "branch": branch,
+        "pid": pid,
+        "status": status,
+        "task_id": task_id,
+        "task_title": task_title[:80] if task_title else task_title,
+        "attempt": attempt,
+        "model": model,
+        "cost_usd": cost_usd,
+        "done": done,
+        "blocked": blocked,
+        "todo": todo,
+        "updated_at": now,
+    }
+
+
+def write_heartbeat(path, record):
+    """Write one heartbeat json, creating parent dirs. Atomic (same-dir temp +
+    os.replace) so an outside reader never sees a torn file."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _atomic_write_text(path, json.dumps(record, indent=2))
+
+
+def _registry_heartbeat(state, tasks, status, task=None, attempt=None, model=None):
+    """Best-effort heartbeat to the global registry. Never raises: the registry
+    is observability, not control flow, so IO failures are swallowed."""
+    rid = run_id(ROOT.name, state.get("branch", ""))
+    results = state.get("results", {})
+    record = heartbeat_record(
+        rid, str(ROOT), state.get("branch", ""), os.getpid(), status,
+        task.id if task else None,
+        task.title if task else None,
+        attempt, model,
+        state.get("cost_usd", 0.0),
+        sum(1 for r in results.values() if r.get("status") == "done"),
+        sum(1 for r in results.values() if r.get("status") == "blocked"),
+        sum(1 for t in tasks if not t.done),
+        time.time(),
+    )
+    try:
+        write_heartbeat(registry_dir() / "runs" / f"{rid}.json", record)
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------- learned conventions
@@ -1121,6 +1196,8 @@ def process_task(task, cfg, adapter, state, backlog_rel):
         logfile = LOGDIR / f"iteration-{n:03d}-a{attempt}.md"
         print("[loop] " + task_banner(task, attempt, max_retries, model,
                                        state.get("cost_usd", 0.0)))
+        _registry_heartbeat(state, adapter.list(), "running",
+                            task=task, attempt=attempt, model=model)
 
         prompt = build_prompt(task, gate, prior, flags=flags)
         label = f"{task.id} attempt {attempt}/{max_retries}: {task.title[:60]}"
@@ -1396,6 +1473,7 @@ def main():
                 state["iterations"] += 1
                 save_state(state)
                 write_report(state, adapter.list())
+                _registry_heartbeat(state, adapter.list(), "running")
                 continue
 
             try:
@@ -1432,6 +1510,7 @@ def main():
             state["iterations"] += 1
             save_state(state)
             write_report(state, adapter.list())
+            _registry_heartbeat(state, adapter.list(), "running")
 
             # section 9 checkpoint modes: after a DONE task (never a blocked one), the
             # state is saved + the report written, so pausing here is clean + resumable
@@ -1447,6 +1526,10 @@ def main():
 
         save_state(state)
         write_report(state, adapter.list(), halt=halt)
+        _tasks = adapter.list()
+        _registry_heartbeat(
+            state, _tasks,
+            "done" if not any(not t.done for t in _tasks) else "halted")
         print(f"[loop] halt: {halt}")
         print(f"[loop] report: {REPORT}")
     finally:
