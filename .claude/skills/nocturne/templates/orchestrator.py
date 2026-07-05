@@ -329,7 +329,15 @@ def run_claude(prompt, cfg, logfile, model=None, label=""):
         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         text=True, encoding="utf-8", errors="replace", bufsize=1,
     )
-    timer = threading.Timer(timeout, proc.kill)
+    # Record when the watchdog actually fires so the caller can tell a per-task
+    # timeout kill apart from the model simply producing no commit.
+    killed = []
+
+    def _on_timeout():
+        killed.append(True)
+        proc.kill()
+
+    timer = threading.Timer(timeout, _on_timeout)
     timer.start()
     chunks = []
     try:
@@ -357,6 +365,7 @@ def run_claude(prompt, cfg, logfile, model=None, label=""):
         cost=parse_cost(events),
         rate_limited=is_rate_limited(events),
         resets_at=rate_limit_reset(events),
+        timed_out=bool(killed),
     )
 
 
@@ -815,7 +824,9 @@ def format_flag_notice(flags):
 RATE_LIMIT_BUFFER_S = 15                 # cushion so we retry just AFTER the reset
 DEFAULT_MAX_RATE_LIMIT_WAIT_S = 21600    # 6h: covers a five_hour reset, bounds garbage resetsAt
 
-ClaudeResult = collections.namedtuple("ClaudeResult", "cost rate_limited resets_at")
+ClaudeResult = collections.namedtuple(
+    "ClaudeResult", "cost rate_limited resets_at timed_out", defaults=[False]
+)
 
 
 class RateLimitHalt(Exception):
@@ -1076,6 +1087,21 @@ def resumed_failure_count(consecutive_failures, max_consecutive_failures):
 
 
 # ---------------------------------------------------------------- main loop
+def timeout_prior(timed_out, seconds):
+    """Retry message for a per-task watchdog kill, else None.
+
+    A timeout kill otherwise surfaces as the generic "No commit was produced",
+    hiding the real cause. When the watchdog fired, name the cap and how to fix it.
+    """
+    if not timed_out:
+        return None
+    return (
+        f"Killed at the per-task timeout ({seconds}s, "
+        "budget.max_seconds_per_task). Raise the cap or split the task into "
+        "smaller steps."
+    )
+
+
 def process_task(task, cfg, adapter, state, backlog_rel):
     """Run one task through up to max_retries attempts. Returns (done, sha, reason)."""
     gate = cfg["gate"]
@@ -1164,7 +1190,10 @@ def process_task(task, cfg, adapter, state, backlog_rel):
                 last_gate_fail = gate_out               # §16 capture source on recovery
                 prior = gate_out
         elif not new_commit:
-            prior = "No commit was produced. You must commit your work."
+            prior = timeout_prior(
+                result.timed_out,
+                cfg.get("budget", {}).get("max_seconds_per_task", 1800),
+            ) or "No commit was produced. You must commit your work."
         else:  # committed but left the tree dirty
             prior = "Uncommitted changes remained after your commit. Commit everything in one commit."
 
