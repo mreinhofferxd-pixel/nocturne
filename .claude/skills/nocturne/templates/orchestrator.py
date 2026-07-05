@@ -909,6 +909,7 @@ def _announce_rate_limit_pause(resets_at, wait, state, tasks):
     _append_activity(f"⏳ {msg}")
     write_report(state, tasks, note=msg)
     _registry_heartbeat(state, tasks, "paused")
+    _emit_event("PAUSED", detail=str(resets_at) if resets_at else "")
 
 
 # ---------------------------------------------------------------- run registry
@@ -981,6 +982,48 @@ def _registry_heartbeat(state, tasks, status, task=None, attempt=None, model=Non
     )
     try:
         write_heartbeat(registry_dir() / "runs" / f"{rid}.json", record)
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------- event feed
+# Global append-only EVENT feed for push consumers: a Claude session arms a
+# file-watcher on the feed and narrates new lines into chat. Lives beside the
+# run registry at $NOCTURNE_HOME/events.log. Append-only -- rotation is
+# explicitly out of scope for v1. Boundary events only (never mid-attempt), and
+# best-effort: a feed write failure must never crash the loop.
+EVENT_LINE_MAX = 200
+
+
+def event_line(now_iso, repo_name, task_id, event, detail=""):
+    """One feed line: '<iso> <repo> <task_id> <EVENT>' plus ' <detail>' when
+    detail is non-empty. Detail's internal whitespace collapses to single
+    spaces; the whole line is capped at EVENT_LINE_MAX chars. No trailing
+    newline. Pure, so the format is unit-testable."""
+    line = f"{now_iso} {repo_name} {task_id} {event}"
+    detail = " ".join((detail or "").split())
+    if detail:
+        line = f"{line} {detail}"
+    return line[:EVENT_LINE_MAX]
+
+
+def append_event(path, line):
+    """Append one line + newline to the feed, creating parent dirs."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(line + "\n")
+
+
+def _emit_event(event, task_id="-", detail=""):
+    """Best-effort boundary event to the global feed. Never raises: the feed
+    is observability, not control flow, so IO failures are swallowed."""
+    try:
+        append_event(
+            registry_dir() / "events.log",
+            event_line(time.strftime("%Y-%m-%dT%H:%M:%S"), ROOT.name,
+                       task_id, event, detail),
+        )
     except Exception:
         pass
 
@@ -1470,6 +1513,8 @@ def main():
                     "retries": 0,
                 }
                 print(f"[loop] CHECKPOINT {task.id}")
+                _emit_event("TASK_BLOCKED", task.id,
+                            "acceptance not codifiable — needs a human checkpoint")
                 state["iterations"] += 1
                 save_state(state)
                 write_report(state, adapter.list())
@@ -1489,6 +1534,8 @@ def main():
                                              "title": task.title}
                 state["consecutive_failures"] = 0
                 print(f"[loop] DONE {task.id} -> {sha[:9]}")
+                _emit_event("TASK_DONE", task.id,
+                            f"{sha[:9]} ${state['cost_usd']:.4f}")
                 # §8.7 forward-flag: harvest any LOOP-FLAG lines the finished
                 # agent left in its commit and surface them to later tasks.
                 new_flags = parse_forward_flags(git("log", "-1", "--format=%B", sha))
@@ -1506,6 +1553,7 @@ def main():
                 }
                 state["consecutive_failures"] += 1
                 print(f"[loop] BLOCKED {task.id}: {reason}")
+                _emit_event("TASK_BLOCKED", task.id, reason)
 
             state["iterations"] += 1
             save_state(state)
@@ -1530,6 +1578,10 @@ def main():
         _registry_heartbeat(
             state, _tasks,
             "done" if not any(not t.done for t in _tasks) else "halted")
+        if halt == "backlog empty":
+            _emit_event("RUN_DONE")
+        else:
+            _emit_event("HALT", detail=halt)
         print(f"[loop] halt: {halt}")
         print(f"[loop] report: {REPORT}")
     finally:
