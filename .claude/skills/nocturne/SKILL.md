@@ -1,11 +1,14 @@
 ---
 name: nocturne
-description: Read a repo and its BACKLOG.md (or groom a SPEC/design doc into one),
+description: Read a repo and its BACKLOG.md (or groom a spec/design doc into one),
   then generate and launch a headless claude -p while-loop that autonomously works
-  the backlog (implement -> verify -> commit) on a dedicated branch. v1 walking
-  skeleton — markdown backlog or spec-groomed backlog, auto-detected quality gate,
-  attached run, trust-but-verify harness, atomic commits, resumable. Use when the
-  user wants to set up or start an autonomous dev loop over a backlog or a spec.
+  the backlog (implement -> verify -> commit) on a dedicated branch. Trust-but-verify
+  harness — auto-derived quality gate independently re-run, atomic commits, anti-gaming
+  diff guard, acceptance enforcement, model tiering + retry escalation, rate-limit
+  pause-resume, budget caps, protected paths, checkpoint modes; live feed plus a global
+  run registry with statusline/events observability; attached or detached (background)
+  runs; resumable. Use when the user wants to set up, start, watch, resume, or detach
+  an autonomous dev loop over a backlog or a spec.
 ---
 
 # nocturne (v1)
