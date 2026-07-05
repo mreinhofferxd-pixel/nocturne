@@ -134,6 +134,11 @@ def _print_rows(runs_dir):
 
 
 def main(argv=None):
+    # Windows: piped stdout defaults to cp1252, which cannot encode the row
+    # glyphs -- force UTF-8 with replacement so a statusline hook or pipe
+    # consumer never sees a UnicodeEncodeError crash.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     argv = sys.argv[1:] if argv is None else argv
     runs_dir = default_runs_dir()
     if argv[:1] == ["--line"]:

@@ -126,3 +126,31 @@ def test_load_records_drops_corrupt_keeps_valid(tmp_path):
     (tmp_path / "torn.json").write_text('{"run_id": "x", "sta', encoding="utf-8")
     (tmp_path / "notdict.json").write_text("[1, 2]", encoding="utf-8")
     assert ns.load_records(tmp_path) == [good]
+
+
+def test_main_survives_cp1252_stdout(tmp_path):
+    """Windows pipe consumers get cp1252 by default; the row glyphs are not
+    encodable there. main() must reconfigure stdout to UTF-8 and print rows
+    without a UnicodeEncodeError (regression: crashed pre-hardening)."""
+    import json
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    home = tmp_path / "home"
+    (home / "runs").mkdir(parents=True)
+    record = {
+        "run_id": "r1", "status": "running", "task_id": "task-1",
+        "attempt": 1, "model": "claude-fable-5", "cost_usd": 0.5,
+        "done": 1, "blocked": 0, "todo": 2, "updated_at": 4_000_000_000.0,
+    }
+    (home / "runs" / "r1.json").write_text(json.dumps(record), encoding="utf-8")
+    module = Path(__file__).resolve().parent.parent / (
+        ".claude/skills/nocturne/templates/nocturne_status.py")
+    env = {**os.environ, "NOCTURNE_HOME": str(home),
+           "PYTHONIOENCODING": "cp1252"}
+    proc = subprocess.run([sys.executable, str(module)],
+                          capture_output=True, env=env, timeout=30)
+    assert proc.returncode == 0, proc.stderr.decode(errors="replace")
+    assert b"r1" in proc.stdout
