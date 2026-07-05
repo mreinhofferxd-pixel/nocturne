@@ -5,7 +5,7 @@
 ![tests](https://img.shields.io/badge/tests-323%20passing-brightgreen)
 ![platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
 
-nocturne is a Claude Code skill that turns a repo plus a checkbox backlog into a self-verifying autonomous dev loop — a design-layer Claude reads the repo, authors a tailored harness, and launches a headless `claude -p` while-loop that implements, verifies, and commits each task on a dedicated branch.
+nocturne is a Claude Code skill that turns a repo plus a spec/checkbox-backlog into a self-verifying autonomous dev loop — a design-layer Claude reads the repo, authors a tailored harness, and launches a headless `claude -p` while-loop that implements, verifies, and commits each task on a dedicated branch.
 
 *a task exists in a done/not-done superposition until the harness observes it.*
 
