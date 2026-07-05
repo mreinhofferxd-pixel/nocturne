@@ -9,6 +9,17 @@ nocturne is a Claude Code skill that turns a repo plus a spec/checkbox-backlog i
 
 *a task exists in a done/not-done superposition until the harness observes it.*
 
+## Why not just a loop?
+
+"Define a loop and let it run" dies at the context window: one session working
+a whole backlog drags every task's noise into the next, and quality decays as
+the window fills. The actual fix is an outer loop — a fresh session per task,
+state carried between sessions, results verified independently — and that is a
+real piece of engineering, not a prompt. nocturne is that outer loop: the
+harness holds the backlog, budget, retries, and learnings; each task runs in a
+clean headless `claude -p` session; nothing counts as done until the gate runs
+green on a real commit.
+
 ## Quick start
 
 Nothing to install. You need:
