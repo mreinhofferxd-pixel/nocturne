@@ -24,6 +24,8 @@ Then:
 
 The skill previews the backlog, gate, branch, and caps, then waits for an explicit **GO** before launching.
 
+The loop model runs with broad Bash access — use it on repos you trust. Commits stay on a local loop branch; nothing is pushed.
+
 ## What it does
 
 - **Auto-derived quality gate** — inferred from the repo, where an explicit `Done = <cmd>` statement outranks CI config, package scripts, and language defaults; the harness re-runs it independently.
@@ -39,10 +41,3 @@ The skill previews the backlog, gate, branch, and caps, then waits for an explic
 ## Configuration
 
 The full `loop.config.json` schema lives in `.claude/skills/nocturne/SKILL.md`.
-
-## v1 scope & limits
-
-- **Local-only** — commits stay on a local loop branch; no push or PR automation yet.
-- **Markdown checkbox backlogs only** — github/gitlab issue adapters are not built.
-- The harness requires `python` 3.10+ and the `claude` CLI.
-- The loop model runs with broad Bash access — use on trusted repos.
