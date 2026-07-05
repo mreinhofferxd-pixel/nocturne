@@ -20,18 +20,29 @@ harness holds the backlog, budget, retries, and learnings; each task runs in a
 clean headless `claude -p` session; nothing counts as done until the gate runs
 green on a real commit.
 
+## Install
+
+One command. Installs the skill user-wide, so `/nocturne` works in every repo.
+
+```bash
+# macOS / Linux / WSL / Git Bash
+curl -fsSL https://raw.githubusercontent.com/mreinhofferxd-pixel/nocturne/master/install.sh | bash
+```
+
+```powershell
+# Windows / PowerShell 5.1+
+irm https://raw.githubusercontent.com/mreinhofferxd-pixel/nocturne/master/install.ps1 | iex
+```
+
+A few seconds. Safe to re-run. Prefer a per-repo install? Copy
+`.claude/skills/nocturne/` into the target repo's `.claude/skills/` instead.
+
 ## Quick start
 
-Nothing to install. You need:
+You need the Claude Code CLI and `python` 3.10+ on PATH.
 
-- the Claude Code CLI
-- `python` 3.10+ on PATH
-- a git repo with either a `- [ ]` checkbox `BACKLOG.md` or a spec/design doc to groom
-
-Then:
-
-1. Copy `.claude/skills/nocturne/` into the target repo's `.claude/skills/`.
-2. Open Claude Code there and run `/nocturne`.
+1. Open Claude Code in a git repo that has a `- [ ]` checkbox `BACKLOG.md` or a spec/design doc to groom.
+2. Run `/nocturne`.
 
 The skill previews the backlog, gate, branch, and caps, then waits for an explicit **GO** before launching.
 
