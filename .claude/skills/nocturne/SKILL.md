@@ -119,6 +119,15 @@ task, commits on green, checkpoints state every iteration.
   feed straight to this terminal** — tool calls, assistant text, per-turn cost — and you
   watch it live in-context. No separate viewer or manual tail needed. Toggle with
   `observability.live_feed` (default true).
+- **Launching from a Claude Code session: run it as a BACKGROUND task with
+  stdout UNREDIRECTED** (Bash `run_in_background`, no `> file`, no `2>&1` into a
+  file). The live feed then accumulates in the background task's output, and the
+  desktop **background-tasks panel** shows the run streaming live — the user
+  clicks the task entry and watches tool calls / model text / per-turn cost
+  exactly like a foreground session, with zero manual tail commands.
+  Redirecting stdout to a file hides the stream from that panel — don't.
+  Pair with the events-feed Monitor (below) for boundary pings in chat; keep the
+  Monitor filtered to `[loop] ` lines so chat is not flooded.
   - `.loop/activity.log` — the same feed mirrored to a file (post-hoc review or a second
     pane): `Get-Content .loop/activity.log -Wait` (PowerShell) / `tail -f .loop/activity.log`.
   - `.loop/report.md` — task-boundary dashboard (done/blocked/todo, cost).
