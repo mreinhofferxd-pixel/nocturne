@@ -563,8 +563,10 @@ _SUPPRESSION_MARKER = re.compile(
     | \bxit\b | \bxdescribe\b      # jasmine/jest/mocha: pending spec
     | mark\.skip                   # pytest: @pytest.mark.skip[if]
     | \.skip\s*[\(\.]              # jest/mocha/pytest: it.skip( / describe.skip.
-    | \bskip\s*\(                  # pytest.skip( / unittest skip(
-    | \bskip(?:if|unless)?\b       # bare skip / skipif / skipunless marker
+    | \bpytest\.skip\s*\(          # pytest: imperative pytest.skip(...)
+    | \bunittest\.skip\w*\s*\(     # unittest: @unittest.skip / skipIf / skipUnless(...)
+    | \bself\.skipTest\s*\(        # unittest: self.skipTest(...)
+    | @skip\b                      # bare @skip / @skipif decorator (no bare 'skip' word)
     """,
     re.IGNORECASE | re.VERBOSE,
 )
@@ -607,8 +609,10 @@ def is_suppressing_diff(diff_text):
     """Classify a unified diff as coverage-suppressing (spec 8.5). Pure text
     classifier over the `+`/`-` hunk lines only (never the `+++`/`---` headers).
 
-    True when the diff nets a suppression marker (skip/xfail/@ts-ignore/
-    # type: ignore/# noqa/eslint-disable) or nets a removed assertion. Uses net
+    True when the diff nets a suppression marker -- a test-call-shaped skip
+    (pytest.skip(/mark.skip/it.skip(, never a bare "skip" word), xfail, xit,
+    @ts-ignore, # type: ignore, # noqa, or eslint-disable -- or nets a removed
+    assertion. Uses net
     counts so an in-place edit (a marker/assertion present on both sides, or an
     assertion whose expected value merely changed) is not flagged -- only a real
     silencing or deletion is."""

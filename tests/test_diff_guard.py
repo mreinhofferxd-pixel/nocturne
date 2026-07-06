@@ -149,6 +149,46 @@ def test_skip_wins_over_added_code():
     assert orchestrator.is_suppressing_diff(d) is True
 
 
+# ---- narrowed skip guard: honest domain vocabulary is NOT flagged (regression)
+# The guard once matched any added line containing the bare word "skip", so a
+# comment, UI string, or variable whose domain vocabulary included "skip" got a
+# green attempt rejected. The skip alternatives now require a test-call shape.
+def test_comment_mentioning_skip_is_not_suppressing():
+    d = _diff("src/gate.js", added=["// A section hash alone implies skip"])
+    assert orchestrator.is_suppressing_diff(d) is False
+
+
+def test_jsx_skip_intro_text_is_not_suppressing():
+    d = _diff("src/Intro.jsx", added=["  <button>Skip intro</button>"])
+    assert orchestrator.is_suppressing_diff(d) is False
+
+
+def test_variable_named_skip_is_not_suppressing():
+    d = _diff("src/gate.py", added=["    skip = should_bypass(user)"])
+    assert orchestrator.is_suppressing_diff(d) is False
+
+
+def test_skipif_prose_word_is_not_suppressing():
+    d = _diff("docs/notes.md", added=["We skipif the retry when the queue is cold"])
+    assert orchestrator.is_suppressing_diff(d) is False
+
+
+# ---- narrowed skip guard: real test-call shapes STILL flag
+def test_pytest_skip_call_still_flags():
+    d = _diff("tests/test_x.py", added=["    pytest.skip('not ready')"])
+    assert orchestrator.is_suppressing_diff(d) is True
+
+
+def test_pytest_mark_skipif_still_flags():
+    d = _diff("tests/test_x.py", added=["@pytest.mark.skipif(True, reason='x')"])
+    assert orchestrator.is_suppressing_diff(d) is True
+
+
+def test_it_skip_call_still_flags():
+    d = _diff("src/x.test.js", added=["  it.skip('adds', () => {"])
+    assert orchestrator.is_suppressing_diff(d) is True
+
+
 # ---- modifies_tests tag detection
 def test_modifies_tests_tag_present():
     assert orchestrator.modifies_tests("rework flaky suite [modifies-tests]") is True

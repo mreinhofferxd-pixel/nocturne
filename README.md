@@ -2,7 +2,7 @@
 
 ![python](https://img.shields.io/badge/python-3.10+-blue)
 ![license](https://img.shields.io/badge/license-MIT-green)
-![tests](https://img.shields.io/badge/tests-323%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-330%20passing-brightgreen)
 ![platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
 
 nocturne is a Claude Code skill that turns a repo plus a spec/checkbox-backlog into a self-verifying autonomous dev loop: a design-layer Claude reads the repo, authors a tailored harness, and launches a headless `claude -p` while-loop that implements, verifies, and commits each task on a dedicated branch.
