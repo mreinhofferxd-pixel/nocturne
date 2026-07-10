@@ -310,7 +310,7 @@ def run_claude(prompt, cfg, logfile, model=None, label=""):
         f'claude -p --output-format stream-json --verbose '
         f'--permission-mode acceptEdits '
         f'--allowedTools "{tools}" '
-        f'--max-turns {budget.get("max_turns", 30)} '
+        f'--max-turns {budget.get("max_turns", 45)} '
         f'--model {model}'
     )
     if cfg.get("effort"):

@@ -186,7 +186,7 @@ Blocked tasks carry a reason. No push/PR in v1 — the user reviews the branch.
     "max_iterations": 50,
     "max_consecutive_failures": 3,
     "max_retries": 3,
-    "max_turns": 30,
+    "max_turns": 45,
     "max_seconds_per_task": 1800,
     "max_cost_usd": null,                   // §9 dollar cap + pre-task projection; null/0 = no cap
     "max_wallclock_min": null               // §9 wall-clock cap in minutes; null/0 = no cap
