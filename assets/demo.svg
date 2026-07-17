@@ -1,0 +1,214 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 680" width="1280" height="680" font-family="ui-monospace, 'Cascadia Code', 'JetBrains Mono', Menlo, Consolas, monospace">
+  <defs>
+    <radialGradient id="bgGlow" cx="50%" cy="52%" r="46%">
+      <stop offset="0%" stop-color="#0c2726"/>
+      <stop offset="58%" stop-color="#080e14"/>
+      <stop offset="100%" stop-color="#05080c"/>
+    </radialGradient>
+    <linearGradient id="panelFill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0c141d"/>
+      <stop offset="100%" stop-color="#080d13"/>
+    </linearGradient>
+    <linearGradient id="wordmark" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#5eead4"/>
+      <stop offset="100%" stop-color="#2dd4bf"/>
+    </linearGradient>
+    <linearGradient id="spineGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#123f3c"/>
+      <stop offset="50%" stop-color="#1c5f5a"/>
+      <stop offset="100%" stop-color="#123f3c"/>
+    </linearGradient>
+
+    <filter id="gSoft" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="2.2" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="gMed" x="-90%" y="-90%" width="280%" height="280%">
+      <feGaussianBlur stdDeviation="4.5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="gStrong" x="-160%" y="-160%" width="420%" height="420%">
+      <feGaussianBlur stdDeviation="9" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+
+    <linearGradient id="fadeGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#000"/>
+      <stop offset="15%" stop-color="#fff"/>
+      <stop offset="85%" stop-color="#fff"/>
+      <stop offset="100%" stop-color="#000"/>
+    </linearGradient>
+    <mask id="backlogFade"><rect x="70" y="196" width="238" height="250" fill="url(#fadeGrad)"/></mask>
+    <mask id="ledgerFade"><rect x="978" y="196" width="238" height="250" fill="url(#fadeGrad)"/></mask>
+    <clipPath id="backlogClip"><rect x="70" y="196" width="238" height="250"/></clipPath>
+    <clipPath id="ledgerClip"><rect x="978" y="196" width="238" height="250"/></clipPath>
+  </defs>
+
+  <!-- background -->
+  <rect width="1280" height="680" fill="#05080c"/>
+  <rect width="1280" height="680" fill="url(#bgGlow)"/>
+
+  <!-- title -->
+  <text x="640" y="60" text-anchor="middle" font-family="'Inter', system-ui, -apple-system, Segoe UI, Roboto, sans-serif"
+        font-size="34" font-weight="700" letter-spacing="1" fill="url(#wordmark)" filter="url(#gSoft)">nocturne</text>
+  <text x="640" y="90" text-anchor="middle" font-size="12.5" letter-spacing="4" fill="#597580">AUTONOMOUS DEV LOOP</text>
+
+  <!-- ============ BACKLOG (input) ============ -->
+  <g>
+    <rect x="70" y="150" width="238" height="296" rx="12" fill="url(#panelFill)" stroke="#15303a" stroke-width="1"/>
+    <text x="86" y="180" font-size="13" letter-spacing="1" fill="#7fe9d6">BACKLOG.md</text>
+    <line x1="86" y1="190" x2="292" y2="190" stroke="#12242c" stroke-width="1"/>
+    <g clip-path="url(#backlogClip)" mask="url(#backlogFade)">
+      <g fill="#5f7784" font-size="13.5">
+        <g>
+          <text x="88" y="222">▢  add rate-limit retry</text>
+          <text x="88" y="258">▢  fix null guard in parser</text>
+          <text x="88" y="294">▢  cover parser edge cases</text>
+          <text x="88" y="330">▢  wire config schema</text>
+          <text x="88" y="366">▢  dedupe commit path</text>
+          <text x="88" y="402">▢  tighten diff guard</text>
+          <text x="88" y="438">▢  add budget caps</text>
+          <text x="88" y="474">▢  add rate-limit retry</text>
+          <text x="88" y="510">▢  fix null guard in parser</text>
+          <text x="88" y="546">▢  cover parser edge cases</text>
+          <text x="88" y="582">▢  wire config schema</text>
+          <text x="88" y="618">▢  dedupe commit path</text>
+          <text x="88" y="654">▢  tighten diff guard</text>
+          <text x="88" y="690">▢  add budget caps</text>
+          <animateTransform attributeName="transform" type="translate" from="0 0" to="0 -252"
+            begin="0s" dur="18s" repeatCount="indefinite" calcMode="linear"/>
+        </g>
+      </g>
+    </g>
+    <rect x="72" y="205" width="234" height="26" rx="5" fill="#2dd4bf" opacity="0.06"/>
+    <rect x="72" y="205" width="3" height="26" fill="#2dd4bf" opacity="0.6"/>
+  </g>
+
+  <!-- ============ COMMITS (output) ============ -->
+  <g>
+    <rect x="978" y="150" width="238" height="296" rx="12" fill="url(#panelFill)" stroke="#15303a" stroke-width="1"/>
+    <text x="994" y="180" font-size="13" letter-spacing="1" fill="#7fe9d6">COMMITS</text>
+    <text x="1200" y="180" text-anchor="end" font-size="10.5" letter-spacing="1" fill="#3f5661">loop/auto</text>
+    <line x1="994" y1="190" x2="1200" y2="190" stroke="#12242c" stroke-width="1"/>
+    <g clip-path="url(#ledgerClip)" mask="url(#ledgerFade)">
+      <g font-size="12.5">
+        <g>
+          <text x="996" y="222"><tspan fill="#2dd4bf">✓</tspan><tspan fill="#4c94a0" dx="8">7c1a</tspan><tspan fill="#7c93a0" dx="8">tighten diff guard</tspan></text>
+          <text x="996" y="258"><tspan fill="#2dd4bf">✓</tspan><tspan fill="#4c94a0" dx="8">b3e9</tspan><tspan fill="#7c93a0" dx="8">dedupe commit path</tspan></text>
+          <text x="996" y="294"><tspan fill="#2dd4bf">✓</tspan><tspan fill="#4c94a0" dx="8">a220</tspan><tspan fill="#7c93a0" dx="8">wire config schema</tspan></text>
+          <text x="996" y="330"><tspan fill="#2dd4bf">✓</tspan><tspan fill="#4c94a0" dx="8">f018</tspan><tspan fill="#7c93a0" dx="8">cover edge cases</tspan></text>
+          <text x="996" y="366"><tspan fill="#2dd4bf">✓</tspan><tspan fill="#4c94a0" dx="8">9d4c</tspan><tspan fill="#7c93a0" dx="8">null guard in parser</tspan></text>
+          <text x="996" y="402"><tspan fill="#2dd4bf">✓</tspan><tspan fill="#4c94a0" dx="8">1e77</tspan><tspan fill="#7c93a0" dx="8">rate-limit retry</tspan></text>
+          <text x="996" y="438"><tspan fill="#2dd4bf">✓</tspan><tspan fill="#4c94a0" dx="8">5aa2</tspan><tspan fill="#7c93a0" dx="8">budget caps</tspan></text>
+          <text x="996" y="474"><tspan fill="#2dd4bf">✓</tspan><tspan fill="#4c94a0" dx="8">7c1a</tspan><tspan fill="#7c93a0" dx="8">tighten diff guard</tspan></text>
+          <text x="996" y="510"><tspan fill="#2dd4bf">✓</tspan><tspan fill="#4c94a0" dx="8">b3e9</tspan><tspan fill="#7c93a0" dx="8">dedupe commit path</tspan></text>
+          <text x="996" y="546"><tspan fill="#2dd4bf">✓</tspan><tspan fill="#4c94a0" dx="8">a220</tspan><tspan fill="#7c93a0" dx="8">wire config schema</tspan></text>
+          <text x="996" y="582"><tspan fill="#2dd4bf">✓</tspan><tspan fill="#4c94a0" dx="8">f018</tspan><tspan fill="#7c93a0" dx="8">cover edge cases</tspan></text>
+          <text x="996" y="618"><tspan fill="#2dd4bf">✓</tspan><tspan fill="#4c94a0" dx="8">9d4c</tspan><tspan fill="#7c93a0" dx="8">null guard in parser</tspan></text>
+          <text x="996" y="654"><tspan fill="#2dd4bf">✓</tspan><tspan fill="#4c94a0" dx="8">1e77</tspan><tspan fill="#7c93a0" dx="8">rate-limit retry</tspan></text>
+          <text x="996" y="690"><tspan fill="#2dd4bf">✓</tspan><tspan fill="#4c94a0" dx="8">5aa2</tspan><tspan fill="#7c93a0" dx="8">budget caps</tspan></text>
+          <animateTransform attributeName="transform" type="translate" from="0 0" to="0 -252"
+            begin="0s" dur="18s" repeatCount="indefinite" calcMode="linear"/>
+        </g>
+      </g>
+    </g>
+  </g>
+
+  <!-- ============ PIPELINE ============ -->
+  <!-- return-loop arc (the "while") -->
+  <path d="M880,360 C880,250 850,168 655,168 C460,168 430,250 430,360" fill="none"
+        stroke="#123f3c" stroke-width="2" stroke-dasharray="1 7" stroke-linecap="round"/>
+  <text x="655" y="160" text-anchor="middle" font-size="11" letter-spacing="1" fill="#2f5a5c">while backlog not empty</text>
+
+  <!-- forward spine -->
+  <line x1="430" y1="360" x2="880" y2="360" stroke="url(#spineGrad)" stroke-width="2.5"/>
+
+  <!-- feed in: backlog -> pick -->
+  <path d="M306,214 C360,214 380,330 402,350" fill="none" stroke="#1c4a48" stroke-width="1" opacity="0.55"/>
+  <!-- feed out: commit -> ledger -->
+  <path d="M902,352 C946,346 952,232 978,214" fill="none" stroke="#1c4a48" stroke-width="1" opacity="0.4"/>
+
+  <!-- travelling pulse: comet head + tail along full loop -->
+  <g fill="#8bf5e6">
+    <circle r="2.4" opacity="0.30"><animateMotion dur="6s" repeatCount="indefinite" begin="-5.70s" calcMode="linear" keyPoints="0;0.395;1" keyTimes="0;0.75;1" path="M430,360 L880,360 C880,250 850,168 655,168 C460,168 430,250 430,360"/></circle>
+    <circle r="3.0" opacity="0.5"><animateMotion dur="6s" repeatCount="indefinite" begin="-5.80s" calcMode="linear" keyPoints="0;0.395;1" keyTimes="0;0.75;1" path="M430,360 L880,360 C880,250 850,168 655,168 C460,168 430,250 430,360"/></circle>
+    <circle r="3.8" opacity="0.75"><animateMotion dur="6s" repeatCount="indefinite" begin="-5.90s" calcMode="linear" keyPoints="0;0.395;1" keyTimes="0;0.75;1" path="M430,360 L880,360 C880,250 850,168 655,168 C460,168 430,250 430,360"/></circle>
+  </g>
+  <circle r="5.5" fill="#c9fff5" filter="url(#gStrong)">
+    <animateMotion dur="6s" repeatCount="indefinite" calcMode="linear" keyPoints="0;0.395;1" keyTimes="0;0.75;1"
+      path="M430,360 L880,360 C880,250 850,168 655,168 C460,168 430,250 430,360"/>
+  </circle>
+
+  <!-- ============ nodes ============ -->
+  <!-- 1 PICK -->
+  <g>
+    <circle cx="430" cy="360" r="34" fill="none" stroke="#2dd4bf" stroke-width="2">
+      <animate attributeName="opacity" dur="6s" repeatCount="indefinite" values="1;0.16;0.16;0.16;0.16;1" keyTimes="0;0.07;0.25;0.5;0.9;1"/>
+      <animate attributeName="stroke-width" dur="6s" repeatCount="indefinite" values="2.8;1.3;1.3;1.3;1.3;2.8" keyTimes="0;0.07;0.25;0.5;0.9;1"/>
+    </circle>
+    <circle cx="430" cy="360" r="27" fill="#081319" stroke="#1c4d49" stroke-width="1"/>
+    <text x="430" y="367" text-anchor="middle" font-size="17" font-weight="700" fill="#8ff0df" filter="url(#gSoft)">1</text>
+    <text x="430" y="416" text-anchor="middle" font-size="12.5" letter-spacing="1" fill="#a9c6cc">PICK</text>
+    <text x="430" y="433" text-anchor="middle" font-size="10" fill="#4d6a70">next task</text>
+  </g>
+  <!-- 2 IMPLEMENT -->
+  <g>
+    <circle cx="580" cy="360" r="34" fill="none" stroke="#2dd4bf" stroke-width="2">
+      <animate attributeName="opacity" dur="6s" repeatCount="indefinite" values="0.16;0.16;1;0.16;0.16" keyTimes="0;0.19;0.25;0.34;1"/>
+      <animate attributeName="stroke-width" dur="6s" repeatCount="indefinite" values="1.3;1.3;2.8;1.3;1.3" keyTimes="0;0.19;0.25;0.34;1"/>
+    </circle>
+    <circle cx="580" cy="360" r="27" fill="#081319" stroke="#1c4d49" stroke-width="1"/>
+    <text x="580" y="367" text-anchor="middle" font-size="17" font-weight="700" fill="#8ff0df" filter="url(#gSoft)">2</text>
+    <text x="580" y="416" text-anchor="middle" font-size="12.5" letter-spacing="1" fill="#a9c6cc">IMPLEMENT</text>
+    <text x="580" y="433" text-anchor="middle" font-size="10" fill="#4d6a70">fresh claude -p session</text>
+  </g>
+  <!-- 3 VERIFY -->
+  <g>
+    <circle cx="730" cy="360" r="34" fill="none" stroke="#2dd4bf" stroke-width="2">
+      <animate attributeName="opacity" dur="6s" repeatCount="indefinite" values="0.16;0.16;1;0.16;0.16" keyTimes="0;0.44;0.5;0.6;1"/>
+      <animate attributeName="stroke-width" dur="6s" repeatCount="indefinite" values="1.3;1.3;2.8;1.3;1.3" keyTimes="0;0.44;0.5;0.6;1"/>
+    </circle>
+    <circle cx="730" cy="360" r="27" fill="#081319" stroke="#1c4d49" stroke-width="1"/>
+    <text x="730" y="367" text-anchor="middle" font-size="17" font-weight="700" fill="#8ff0df" filter="url(#gSoft)">3</text>
+    <text x="730" y="416" text-anchor="middle" font-size="12.5" letter-spacing="1" fill="#a9c6cc">VERIFY</text>
+    <text x="730" y="433" text-anchor="middle" font-size="10" fill="#4d6a70">re-run gate + diff guard</text>
+  </g>
+  <!-- 4 COMMIT -->
+  <g>
+    <circle cx="880" cy="360" r="34" fill="none" stroke="#2dd4bf" stroke-width="2">
+      <animate attributeName="opacity" dur="6s" repeatCount="indefinite" values="0.16;0.16;1;0.16;0.16" keyTimes="0;0.69;0.75;0.86;1"/>
+      <animate attributeName="stroke-width" dur="6s" repeatCount="indefinite" values="1.3;1.3;2.8;1.3;1.3" keyTimes="0;0.69;0.75;0.86;1"/>
+    </circle>
+    <circle cx="880" cy="360" r="27" fill="#081319" stroke="#1c4d49" stroke-width="1"/>
+    <text x="880" y="367" text-anchor="middle" font-size="17" font-weight="700" fill="#8ff0df" filter="url(#gSoft)">4</text>
+    <text x="880" y="416" text-anchor="middle" font-size="12.5" letter-spacing="1" fill="#a9c6cc">COMMIT</text>
+    <text x="880" y="433" text-anchor="middle" font-size="10" fill="#4d6a70">atomic · one per task</text>
+  </g>
+
+  <!-- feed dots -->
+  <circle r="4" fill="#5eead4" filter="url(#gMed)">
+    <animateMotion dur="6s" repeatCount="indefinite" calcMode="linear" keyPoints="0;1;1" keyTimes="0;0.12;1" path="M306,214 C360,214 380,330 402,350"/>
+    <animate attributeName="opacity" dur="6s" repeatCount="indefinite" values="1;1;0;0" keyTimes="0;0.11;0.12;1"/>
+  </circle>
+  <circle r="4" fill="#5eead4" filter="url(#gMed)">
+    <animateMotion dur="6s" repeatCount="indefinite" calcMode="linear" keyPoints="0;0;1;1" keyTimes="0;0.75;0.87;1" path="M902,352 C946,346 952,232 978,214"/>
+    <animate attributeName="opacity" dur="6s" repeatCount="indefinite" values="0;0;1;1;0" keyTimes="0;0.74;0.75;0.86;0.87"/>
+  </circle>
+
+  <!-- ============ trust-but-verify triad ============ -->
+  <text x="640" y="600" text-anchor="middle" font-size="11" letter-spacing="3" fill="#39585c">TRUST BUT VERIFY  ·  DONE REQUIRES ALL THREE</text>
+  <g font-size="12.5" letter-spacing="0.5">
+    <g transform="translate(452,632)">
+      <text x="0" y="0" fill="#2dd4bf" filter="url(#gSoft)"><animate attributeName="opacity" dur="6s" repeatCount="indefinite" values="0.22;0.22;1;0.45;0.22" keyTimes="0;0.48;0.55;0.72;1"/>✓</text>
+      <text x="17" y="0" fill="#7c98a0">gate green</text>
+    </g>
+    <g transform="translate(600,632)">
+      <text x="0" y="0" fill="#2dd4bf" filter="url(#gSoft)"><animate attributeName="opacity" dur="6s" repeatCount="indefinite" values="0.22;0.22;1;0.45;0.22" keyTimes="0;0.68;0.75;0.9;1"/>✓</text>
+      <text x="17" y="0" fill="#7c98a0">new commit</text>
+    </g>
+    <g transform="translate(752,632)">
+      <text x="0" y="0" fill="#2dd4bf" filter="url(#gSoft)"><animate attributeName="opacity" dur="6s" repeatCount="indefinite" values="0.22;0.22;1;0.45;0.22" keyTimes="0;0.82;0.9;0.99;1"/>✓</text>
+      <text x="17" y="0" fill="#7c98a0">clean tree</text>
+    </g>
+  </g>
+</svg>
